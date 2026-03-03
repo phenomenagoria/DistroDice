@@ -89,6 +89,11 @@ html, body {
   letter-spacing: 2px;
 }
 
+.setup-group input.name-input {
+  letter-spacing: 0;
+  text-transform: none;
+}
+
 .setup-group input:focus { outline: none; border-color: var(--blue); }
 
 .seed-display {
@@ -135,6 +140,40 @@ html, body {
   min-height: 100vh;
   padding: 8px;
   gap: 8px;
+  position: relative;
+}
+
+/* Animated rainbow border for your turn */
+#game-screen.my-turn-active {
+  border: 3px solid transparent;
+  background: var(--bg);
+  outline: none;
+}
+
+#game-screen.my-turn-active::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  padding: 3px;
+  border-radius: 0;
+  background: conic-gradient(from var(--border-angle, 0deg), var(--red), var(--yellow), var(--green), var(--blue), var(--red));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  animation: borderRotate 3s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes borderRotate {
+  to { --border-angle: 360deg; }
+}
+
+@property --border-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
 }
 
 /* Connection Status */
@@ -153,21 +192,51 @@ html, body {
 /* Turn Banner */
 .turn-banner {
   text-align: center;
-  padding: 8px;
+  padding: 10px 12px;
   border-radius: 8px;
   background: var(--card-bg);
   font-weight: 600;
   font-size: 0.95rem;
+  transition: all 0.3s;
 }
 
 .turn-banner.my-turn {
-  background: var(--blue-dark);
-  animation: pulse 1.5s ease-in-out infinite;
+  background: linear-gradient(135deg, #1a6fd4, #8e44ad, #e74c3c, #f39c12);
+  background-size: 300% 300%;
+  animation: gradientShift 3s ease infinite;
+  color: white;
+  font-size: 1.1rem;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.4);
 }
 
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.7; }
+@keyframes gradientShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.turn-banner.not-my-turn {
+  background: var(--card-bg);
+  color: var(--muted);
+}
+
+/* Turn flash overlay */
+.turn-flash {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(ellipse at center, rgba(52,152,219,0.5), rgba(142,68,173,0.3), transparent 70%);
+}
+
+.turn-flash.flash {
+  animation: turnFlash 0.6s ease-out forwards;
+}
+
+@keyframes turnFlash {
+  0% { opacity: 0.8; }
+  100% { opacity: 0; }
 }
 
 /* Dice Area */
@@ -186,8 +255,8 @@ html, body {
 }
 
 .die {
-  width: 48px;
-  height: 48px;
+  width: 52px;
+  height: 52px;
   border-radius: 8px;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -444,7 +513,9 @@ html, body {
   display: none;
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.85);
+  background: rgba(0,0,0,0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   z-index: 100;
   flex-direction: column;
   align-items: center;
@@ -454,24 +525,86 @@ html, body {
 .game-over-overlay.visible { display: flex; }
 
 .game-over-box {
-  background: var(--card-bg);
-  border-radius: 16px;
-  padding: 24px;
+  background: linear-gradient(135deg, rgba(22,33,62,0.95), rgba(26,26,46,0.95));
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 20px;
+  padding: 28px 24px;
   text-align: center;
-  max-width: 340px;
+  max-width: 380px;
   width: 100%;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  animation: overlayIn 0.4s ease-out;
 }
 
-.game-over-box h2 { font-size: 1.5rem; margin-bottom: 12px; }
+@keyframes overlayIn {
+  from { transform: scale(0.9); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
 
-.game-over-box .final-score {
-  font-size: 2.5rem;
-  font-weight: 800;
-  margin: 12px 0;
+.game-over-box h2 {
+  font-size: 1.6rem;
+  margin-bottom: 6px;
   background: linear-gradient(135deg, var(--yellow), var(--green));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+}
+
+.game-over-reason {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin-bottom: 16px;
+}
+
+/* Leaderboard */
+.leaderboard {
+  width: 100%;
+  margin: 12px 0;
+  border-collapse: collapse;
+}
+
+.leaderboard th {
+  font-size: 0.7rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+  text-align: left;
+}
+
+.leaderboard th:last-child { text-align: right; }
+
+.leaderboard td {
+  padding: 8px;
+  font-size: 0.9rem;
+}
+
+.leaderboard td:last-child { text-align: right; font-weight: 700; }
+
+.leaderboard tr:nth-child(even) td {
+  background: rgba(255,255,255,0.03);
+}
+
+.leaderboard tr.winner td {
+  background: linear-gradient(90deg, rgba(241,196,15,0.2), rgba(241,196,15,0.05));
+  color: var(--yellow);
+  font-weight: 700;
+}
+
+.leaderboard tr.winner td:first-child::before {
+  content: '\uD83D\uDC51 ';
+}
+
+.leaderboard tr.is-me td {
+  border-left: 3px solid var(--blue);
+}
+
+.leaderboard-waiting {
+  color: var(--muted);
+  font-size: 0.85rem;
+  padding: 12px;
+  font-style: italic;
 }
 
 /* Notification */
@@ -496,34 +629,11 @@ html, body {
   to { transform: translateX(-50%) translateY(0); opacity: 1; }
 }
 
-/* Lock row modal */
-.lock-modal {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.7);
-  z-index: 80;
-  display: none;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-}
-.lock-modal.visible { display: flex; }
-
-.lock-modal-box {
-  background: var(--card-bg);
-  border-radius: 12px;
-  padding: 20px;
-  text-align: center;
-  max-width: 300px;
-  width: 100%;
-}
-.lock-modal-box .btn { margin-top: 10px; }
-
 /* Responsive */
 @media (min-width: 400px) {
   .cell { width: 30px; height: 30px; font-size: 0.75rem; }
   .row-label { width: 16px; }
-  .die { width: 54px; height: 54px; padding: 8px; }
+  .die { width: 58px; height: 58px; padding: 8px; }
 }
 @media (min-width: 500px) {
   .cell { width: 34px; height: 34px; }
@@ -539,6 +649,8 @@ html, body {
 
   <div class="setup-group" id="create-group">
     <h2>Create Game</h2>
+    <label for="create-name">Your Name</label>
+    <input type="text" id="create-name" class="name-input" placeholder="Enter your name" maxlength="20" style="text-transform:none;letter-spacing:0;">
     <label for="player-count">Number of Players</label>
     <input type="number" id="player-count" min="2" max="8" value="2">
     <button class="btn btn-primary" id="create-btn">Create Game</button>
@@ -553,6 +665,8 @@ html, body {
 
   <div class="setup-group" id="join-group">
     <h2>Join Game</h2>
+    <label for="join-name">Your Name</label>
+    <input type="text" id="join-name" class="name-input" placeholder="Enter your name" maxlength="20" style="text-transform:none;letter-spacing:0;">
     <label for="join-seed">Game Seed</label>
     <input type="text" id="join-seed" maxlength="6" placeholder="ABC123" style="text-transform:uppercase;">
     <label for="join-count">Total Number of Players</label>
@@ -603,23 +717,16 @@ html, body {
   <div class="actions" id="actions"></div>
 </div>
 
+<!-- Turn Flash Overlay -->
+<div class="turn-flash" id="turn-flash"></div>
+
 <!-- Game Over Overlay -->
 <div class="game-over-overlay" id="game-over-overlay">
   <div class="game-over-box">
     <h2>Game Over!</h2>
-    <div id="game-over-reason"></div>
-    <div class="final-score" id="final-score">0</div>
-    <div style="color:var(--muted);font-size:0.85rem;">Your Final Score</div>
+    <div class="game-over-reason" id="game-over-reason"></div>
+    <div id="game-over-leaderboard"></div>
     <button class="btn btn-primary" onclick="location.reload();" style="margin-top:16px;">Play Again</button>
-  </div>
-</div>
-
-<!-- Lock Row Modal -->
-<div class="lock-modal" id="lock-modal">
-  <div class="lock-modal-box">
-    <p id="lock-modal-text">Another player locked a row! Select rows to lock:</p>
-    <div id="lock-modal-buttons"></div>
-    <button class="btn btn-secondary" onclick="closeLockModal()">Done</button>
   </div>
 </div>
 
@@ -655,6 +762,16 @@ function getScore(marks) {
   return marks * (marks + 1) / 2;
 }
 
+function getMyTotalScore() {
+  let total = 0;
+  for (const color of COLORS) {
+    const mc = game.marked[color].length + (game.hasLockBonus[color] ? 1 : 0);
+    total += getScore(mc);
+  }
+  total -= game.penalties * 5;
+  return total;
+}
+
 // ===== GAME STATE =====
 const COLORS = ['red', 'blue', 'green', 'yellow'];
 const ROW_NUMBERS = {
@@ -668,6 +785,7 @@ let game = {
   seed: '',
   playerCount: 2,
   myPlayer: 1,
+  playerName: '',
   turnNumber: 0,
   startingPlayer: 1,
   phase: 'roll', // roll, mark, waiting, done
@@ -680,10 +798,17 @@ let game = {
   marked: { red: [], blue: [], green: [], yellow: [] },
   rowLocked: { red: false, blue: false, green: false, yellow: false },
   hasLockBonus: { red: false, blue: false, green: false, yellow: false },
+  pendingLocks: [],  // rows that will lock at start of next turn
   penalties: 0,
   gameOver: false,
   lockedRowCount: 0,
 };
+
+// Networked state tracking
+let playerNames = {};     // { playerNumber: name }
+let playerPenalties = {}; // { playerNumber: count } — host tracks
+let playerScores = {};    // { playerNumber: { name, score } } — for leaderboard
+let gameOverShown = false;
 
 // ===== UNDO =====
 let undoStack = [];
@@ -696,6 +821,7 @@ function snapshotForUndo() {
     marked: { red: [...game.marked.red], blue: [...game.marked.blue], green: [...game.marked.green], yellow: [...game.marked.yellow] },
     rowLocked: { ...game.rowLocked },
     hasLockBonus: { ...game.hasLockBonus },
+    pendingLocks: [...game.pendingLocks],
     penalties: game.penalties,
     lockedRowCount: game.lockedRowCount,
     gameOver: game.gameOver,
@@ -709,6 +835,7 @@ function doUndo() {
   const snap = undoStack.pop();
   Object.assign(game, snap);
   document.getElementById('game-over-overlay').classList.remove('visible');
+  gameOverShown = false;
   renderAll();
 }
 
@@ -731,6 +858,8 @@ function setupPeer() {
     if (game.myPlayer === 1) {
       // Host
       isHost = true;
+      playerNames[1] = game.playerName;
+      playerPenalties[1] = game.penalties;
       peer = new Peer(peerId);
 
       peer.on('open', () => {
@@ -742,8 +871,8 @@ function setupPeer() {
         conn.on('open', () => {
           connections.push(conn);
           updateConnStatus('host');
-          // Send current turn state to new connection
-          conn.send({ type: 'state', turnNumber: game.turnNumber });
+          // Send current turn state + all known names to new connection
+          conn.send({ type: 'state', turnNumber: game.turnNumber, names: playerNames });
         });
         conn.on('data', data => handlePeerMessage(data, conn));
         conn.on('close', () => {
@@ -767,6 +896,8 @@ function setupPeer() {
           connections = [conn];
           peerConnected = true;
           updateConnStatus('connected');
+          // Send our name to host
+          sendToHost({ type: 'hello', player: game.myPlayer, name: game.playerName });
         });
         conn.on('data', data => handlePeerMessage(data));
         conn.on('close', () => {
@@ -824,8 +955,24 @@ function sendToHost(data) {
 
 function handlePeerMessage(data, fromConn) {
   switch (data.type) {
+    case 'hello':
+      // Client introducing themselves (host only)
+      if (isHost) {
+        playerNames[data.player] = data.name || `Player ${data.player}`;
+        // Broadcast updated names to all
+        broadcast({ type: 'names', names: playerNames });
+      }
+      break;
+
+    case 'names':
+      // Updated name list from host
+      Object.assign(playerNames, data.names);
+      renderTurnBanner();
+      break;
+
     case 'state':
       // Sync turn number if we're behind
+      if (data.names) Object.assign(playerNames, data.names);
       if (data.turnNumber > game.turnNumber) {
         game.turnNumber = data.turnNumber;
         resetTurnState();
@@ -865,11 +1012,10 @@ function handlePeerMessage(data, fromConn) {
       break;
 
     case 'lock':
-      if (!game.rowLocked[data.color]) {
-        game.rowLocked[data.color] = true;
-        game.lockedRowCount = COLORS.filter(c => game.rowLocked[c]).length;
-        showNotification(`${data.color.toUpperCase()} row locked by another player!`);
-        checkGameEnd();
+      if (!game.pendingLocks.includes(data.color) && !game.rowLocked[data.color]) {
+        game.pendingLocks.push(data.color);
+        const lockerName = data.name || `Player ${data.player || '?'}`;
+        showNotification(`${data.color.toUpperCase()} row locked by ${lockerName}! (locks next turn)`);
         renderAll();
       }
       if (isHost && fromConn) {
@@ -881,7 +1027,112 @@ function handlePeerMessage(data, fromConn) {
         });
       }
       break;
+
+    case 'penalty':
+      // Host tracks penalties from all players
+      if (isHost) {
+        playerPenalties[data.player] = data.count;
+        if (data.count >= 4) {
+          // This player hit 4 penalties — game over for everyone
+          triggerNetworkedGameOver(`${data.name || 'Player ' + data.player} took 4 penalties!`);
+        }
+      }
+      break;
+
+    case 'score':
+      // A player is reporting their final score (host collects)
+      if (isHost) {
+        playerScores[data.player] = { name: data.name, score: data.score };
+        // If we have all scores, broadcast leaderboard
+        if (Object.keys(playerScores).length >= game.playerCount) {
+          broadcast({ type: 'leaderboard', scores: playerScores, reason: data.reason || '' });
+          showLeaderboard(playerScores, data.reason || '');
+        }
+      }
+      break;
+
+    case 'gameOver':
+      // Host says game is over
+      if (!gameOverShown) {
+        game.gameOver = true;
+        game.phase = 'done';
+        // Send our score to host
+        const myScore = getMyTotalScore();
+        sendToHost({ type: 'score', player: game.myPlayer, name: game.playerName, score: myScore, reason: data.reason });
+        document.getElementById('game-over-reason').textContent = data.reason || 'Game Over';
+        showLeaderboardWaiting();
+        document.getElementById('game-over-overlay').classList.add('visible');
+        gameOverShown = true;
+        renderAll();
+      }
+      break;
+
+    case 'leaderboard':
+      // Final leaderboard from host
+      showLeaderboard(data.scores, data.reason);
+      break;
   }
+}
+
+function triggerNetworkedGameOver(reason) {
+  if (!isHost || gameOverShown) return;
+
+  // Broadcast game over to all clients
+  broadcast({ type: 'gameOver', reason: reason });
+
+  // Host also ends locally
+  game.gameOver = true;
+  game.phase = 'done';
+  gameOverShown = true;
+
+  // Host submits own score
+  const myScore = getMyTotalScore();
+  playerScores[game.myPlayer] = { name: game.playerName, score: myScore };
+
+  document.getElementById('game-over-reason').textContent = reason;
+  showLeaderboardWaiting();
+  document.getElementById('game-over-overlay').classList.add('visible');
+  renderAll();
+
+  // If all scores are in (maybe single player scenario or all already reported)
+  if (Object.keys(playerScores).length >= game.playerCount) {
+    broadcast({ type: 'leaderboard', scores: playerScores, reason: reason });
+    showLeaderboard(playerScores, reason);
+  }
+}
+
+function showLeaderboardWaiting() {
+  const el = document.getElementById('game-over-leaderboard');
+  el.innerHTML = '<div class="leaderboard-waiting">Collecting scores from all players...</div>';
+}
+
+function showLeaderboard(scores, reason) {
+  const el = document.getElementById('game-over-leaderboard');
+
+  // Convert to sorted array
+  const entries = Object.entries(scores).map(([p, data]) => ({
+    player: parseInt(p),
+    name: data.name || `Player ${p}`,
+    score: data.score,
+  }));
+  entries.sort((a, b) => b.score - a.score);
+
+  let html = '<table class="leaderboard"><thead><tr><th>Player</th><th style="text-align:right;">Score</th></tr></thead><tbody>';
+  entries.forEach((e, i) => {
+    const isWinner = i === 0;
+    const isMe = e.player === game.myPlayer;
+    let cls = '';
+    if (isWinner) cls += ' winner';
+    if (isMe) cls += ' is-me';
+    html += `<tr class="${cls.trim()}"><td>${e.name}</td><td>${e.score}</td></tr>`;
+  });
+  html += '</tbody></table>';
+
+  el.innerHTML = html;
+
+  // Also update the overlay if not visible yet
+  if (reason) document.getElementById('game-over-reason').textContent = reason;
+  document.getElementById('game-over-overlay').classList.add('visible');
 }
 
 function updateWaitingText(ready, total) {
@@ -1045,7 +1296,6 @@ function renderScorecard() {
       }
 
       const v = getCellValidity(color, num);
-      const isAnyValid = v.white || v.color;
       let cls = `cell ${color}-cell`;
 
       if (v.white && v.color) cls += ' valid-both';
@@ -1061,7 +1311,7 @@ function renderScorecard() {
     let lockCls = `cell ${color}-cell lock-cell`;
     if (lockMarked) lockCls += ' marked';
     else if (isLocked) lockCls += ' locked-row';
-    html += `<div class="${lockCls}">${lockMarked ? 'X' : '🔒'}</div>`;
+    html += `<div class="${lockCls}">${lockMarked ? 'X' : '\uD83D\uDD12'}</div>`;
 
     html += `<div class="row-score">${getScore(markCount)}</div>`;
     html += `</div>`;
@@ -1139,22 +1389,30 @@ function renderActions() {
     html += `<button class="btn btn-secondary" onclick="doUndo()" style="flex:0 0 auto;width:auto;padding:12px 16px;">Undo</button>`;
   }
 
-  html += `<button class="btn btn-danger" onclick="openLockModal()" style="flex:0 0 auto;width:auto;padding:12px 16px;">Lock Row</button>`;
-
   el.innerHTML = html;
+}
+
+function getPlayerName(playerNum) {
+  return playerNames[playerNum] || game.playerName || `Player ${playerNum}`;
 }
 
 function renderTurnBanner() {
   const el = document.getElementById('turn-banner');
+  const gs = document.getElementById('game-screen');
   const cp = getCurrentPlayer();
   game.isMyTurn = (cp === game.myPlayer);
 
+  const myName = game.playerName || `Player ${game.myPlayer}`;
+  const cpName = getPlayerName(cp);
+
   if (game.isMyTurn) {
-    el.textContent = `Turn ${game.turnNumber + 1} — YOUR TURN (Player ${game.myPlayer})`;
+    el.textContent = `YOUR TURN, ${myName}!`;
     el.className = 'turn-banner my-turn';
+    gs.classList.add('my-turn-active');
   } else {
-    el.textContent = `Turn ${game.turnNumber + 1} — Player ${cp}'s turn`;
-    el.className = 'turn-banner';
+    el.textContent = `Turn ${game.turnNumber + 1} — ${cpName}'s turn`;
+    el.className = 'turn-banner not-my-turn';
+    gs.classList.remove('my-turn-active');
   }
 }
 
@@ -1200,6 +1458,29 @@ function renderAll() {
   renderActions();
 }
 
+// ===== TURN EFFECTS =====
+function triggerTurnFlash() {
+  const flash = document.getElementById('turn-flash');
+  flash.classList.remove('flash');
+  // Force reflow
+  void flash.offsetWidth;
+  flash.classList.add('flash');
+}
+
+function triggerHaptic() {
+  if (navigator.vibrate) {
+    navigator.vibrate(200);
+  }
+}
+
+function announceNewTurn() {
+  const cp = getCurrentPlayer();
+  if (cp === game.myPlayer) {
+    triggerTurnFlash();
+    triggerHaptic();
+  }
+}
+
 // ===== GAME LOGIC =====
 function handleCellClick(color, num) {
   if (game.gameOver || game.phase !== 'mark') return;
@@ -1223,7 +1504,7 @@ function handleCellClick(color, num) {
     game.usedWhite = true;
   }
 
-  // Check if this locks the row
+  // Check if this locks the row (last cell with 5+ marks)
   const nums = ROW_NUMBERS[color];
   const idx = nums.indexOf(num);
   if (idx === nums.length - 1) {
@@ -1233,9 +1514,6 @@ function handleCellClick(color, num) {
   // If both slots used (active) or white used (non-active), auto-finish
   if (game.isMyTurn && game.usedWhite && game.usedColor) {
     game.phase = 'mark'; // stay in mark so they can review, but show "all used"
-  }
-  if (!game.isMyTurn && game.usedWhite) {
-    // Non-active player used their only option
   }
 
   renderAll();
@@ -1249,16 +1527,24 @@ function finishMarking() {
     pushUndo();
     game.penalties++;
     showNotification('No moves made — penalty!');
+    broadcastPenalty();
     if (game.penalties >= 4) {
-      checkGameEnd();
-      if (game.gameOver) return;
+      if (peerConnected && isHost) {
+        triggerNetworkedGameOver(`${game.playerName || 'Player ' + game.myPlayer} took 4 penalties!`);
+        return;
+      } else if (peerConnected) {
+        // Client: host will detect via penalty message
+      } else {
+        checkGameEnd();
+        if (game.gameOver) return;
+      }
     }
     renderPenalties();
   }
 
   // Send ready signal
   if (peerConnected) {
-    const msg = { type: 'ready', player: game.myPlayer };
+    const msg = { type: 'ready', player: game.myPlayer, name: game.playerName };
     if (isHost) {
       readyPlayers.add(game.myPlayer);
       broadcast({ type: 'readyCount', ready: readyPlayers.size, total: game.playerCount });
@@ -1283,6 +1569,19 @@ function finishMarking() {
   renderAll();
 }
 
+function broadcastPenalty() {
+  const msg = { type: 'penalty', player: game.myPlayer, name: game.playerName, count: game.penalties };
+  if (isHost) {
+    playerPenalties[game.myPlayer] = game.penalties;
+    // Host checks locally
+    if (game.penalties >= 4) {
+      triggerNetworkedGameOver(`${game.playerName || 'Player ' + game.myPlayer} took 4 penalties!`);
+    }
+  } else if (peerConnected) {
+    sendToHost(msg);
+  }
+}
+
 function manualNextTurn() {
   game.turnNumber++;
   resetTurnState();
@@ -1293,6 +1592,22 @@ function manualNextTurn() {
 
 function resetTurnState() {
   undoStack = [];
+
+  // Apply deferred row locks at the start of the new turn
+  if (game.pendingLocks.length > 0) {
+    applyPendingLocks();
+    // Check if game ends due to 2+ locked rows
+    if (game.lockedRowCount >= 2) {
+      const reason = '2 rows have been locked!';
+      if (peerConnected && isHost) {
+        triggerNetworkedGameOver(reason);
+      } else {
+        checkGameEnd();
+      }
+      if (game.gameOver) return;
+    }
+  }
+
   game.phase = 'roll';
   game.diceRolled = false;
   game.usedWhite = false;
@@ -1302,18 +1617,27 @@ function resetTurnState() {
 }
 
 function lockRow(color, myLock) {
-  game.rowLocked[color] = true;
+  // Row locks are deferred — they apply at the start of the next turn
+  if (!game.pendingLocks.includes(color)) {
+    game.pendingLocks.push(color);
+  }
   if (myLock) {
     game.hasLockBonus[color] = true;
-    showNotification(`You locked the ${color.toUpperCase()} row! (+1 bonus mark)`);
-    announceText(`${color} row locked!`);
-    // Broadcast lock
-    const msg = { type: 'lock', color: color };
+    showNotification(`You locked the ${color.toUpperCase()} row! (+1 bonus mark, locks next turn)`);
+    // Broadcast pending lock to other players
+    const msg = { type: 'lock', color: color, player: game.myPlayer, name: game.playerName };
     if (isHost) broadcast(msg);
     else sendToHost(msg);
   }
+}
+
+function applyPendingLocks() {
+  // Apply deferred locks at start of new turn
+  for (const color of game.pendingLocks) {
+    game.rowLocked[color] = true;
+  }
+  game.pendingLocks = [];
   game.lockedRowCount = COLORS.filter(c => game.rowLocked[c]).length;
-  checkGameEnd();
 }
 
 function doRoll() {
@@ -1340,35 +1664,40 @@ function autoRollIfNeeded() {
   }
 }
 
-function announceNewTurn() {
-  const cp = getCurrentPlayer();
-  if (cp === game.myPlayer) {
-    announceText('Your turn!');
-  } else {
-    announceText(`Player ${cp}'s turn`);
-  }
-}
-
 function checkGameEnd() {
   let reason = '';
   if (game.penalties >= 4) reason = 'You used all 4 penalties!';
+  if (game.lockedRowCount >= 2) reason = '2 rows have been locked!'; // checked after applyPendingLocks
+
+  if (reason && !gameOverShown) {
+    game.gameOver = true;
+    game.phase = 'done';
+    gameOverShown = true;
+
+    const total = getMyTotalScore();
+    document.getElementById('game-over-reason').textContent = reason;
+
+    // In offline mode, show simple score
+    if (!peerConnected) {
+      const el = document.getElementById('game-over-leaderboard');
+      el.innerHTML = `<table class="leaderboard"><thead><tr><th>Player</th><th style="text-align:right;">Score</th></tr></thead><tbody>
+        <tr class="winner is-me"><td>${game.playerName || 'You'}</td><td>${total}</td></tr>
+      </tbody></table>`;
+    }
+    document.getElementById('game-over-overlay').classList.add('visible');
+  }
+}
+
+function checkGameEndHost() {
+  // Host-side: checks and triggers networked game over
+  if (gameOverShown) return;
+
+  let reason = '';
+  if (game.penalties >= 4) reason = `${game.playerName || 'Player ' + game.myPlayer} took 4 penalties!`;
   if (game.lockedRowCount >= 2) reason = '2 rows have been locked!';
 
   if (reason) {
-    game.gameOver = true;
-    game.phase = 'done';
-
-    let total = 0;
-    for (const color of COLORS) {
-      const mc = game.marked[color].length + (game.hasLockBonus[color] ? 1 : 0);
-      total += getScore(mc);
-    }
-    total -= game.penalties * 5;
-
-    document.getElementById('game-over-reason').textContent = reason;
-    document.getElementById('final-score').textContent = total;
-    document.getElementById('game-over-overlay').classList.add('visible');
-    announceText(`Game over! Your score is ${total} points.`);
+    triggerNetworkedGameOver(reason);
   }
 }
 
@@ -1383,49 +1712,18 @@ function showNotification(text) {
   setTimeout(() => el.remove(), 3000);
 }
 
-// ===== SPEECH =====
-function announceText(text) {
-  if ('speechSynthesis' in window) {
-    const u = new SpeechSynthesisUtterance(text);
-    u.rate = 1.1;
-    u.pitch = 1;
-    speechSynthesis.speak(u);
-  }
-}
-
-// ===== LOCK MODAL =====
-function openLockModal() {
-  const modal = document.getElementById('lock-modal');
-  const btns = document.getElementById('lock-modal-buttons');
-  let html = '';
-  for (const color of COLORS) {
-    if (!game.rowLocked[color]) {
-      html += `<button class="btn btn-danger" onclick="externalLockRow('${color}')" style="margin-top:8px;">Lock ${color.toUpperCase()} Row</button>`;
-    }
-  }
-  if (!html) html = '<p style="color:var(--muted);margin:10px 0;">All rows are already locked.</p>';
-  btns.innerHTML = html;
-  modal.classList.add('visible');
-}
-
-function closeLockModal() {
-  document.getElementById('lock-modal').classList.remove('visible');
-}
-
-function externalLockRow(color) {
-  lockRow(color, false);
-  closeLockModal();
-  renderAll();
-}
-
 // ===== SETUP =====
 document.getElementById('create-btn').addEventListener('click', () => {
   const count = parseInt(document.getElementById('player-count').value);
   if (count < 2 || count > 8) return;
 
+  const name = document.getElementById('create-name').value.trim() || 'Player 1';
+
   game.playerCount = count;
   game.myPlayer = 1;
+  game.playerName = name;
   game.seed = generateSeed();
+  playerNames[1] = name;
 
   document.getElementById('seed-display').textContent = game.seed;
   document.getElementById('seed-result').style.display = 'block';
@@ -1438,6 +1736,7 @@ document.getElementById('join-btn').addEventListener('click', () => {
   const seed = document.getElementById('join-seed').value.trim().toUpperCase();
   const count = parseInt(document.getElementById('join-count').value);
   const player = parseInt(document.getElementById('join-player').value);
+  const name = document.getElementById('join-name').value.trim() || `Player ${player}`;
 
   if (seed.length !== 6) { alert('Seed must be 6 characters'); return; }
   if (count < 2 || count > 8) { alert('Number of players must be 2-8'); return; }
@@ -1446,9 +1745,11 @@ document.getElementById('join-btn').addEventListener('click', () => {
   game.seed = seed;
   game.playerCount = count;
   game.myPlayer = player;
+  game.playerName = name;
+  playerNames[player] = name;
 
   document.getElementById('join-btn').disabled = true;
-  document.getElementById('join-btn').textContent = `Joined as Player ${player} of ${count}`;
+  document.getElementById('join-btn').textContent = `Joined as ${name} (Player ${player})`;
   document.getElementById('create-group').style.display = 'none';
   document.getElementById('start-btn').disabled = false;
 });
@@ -1467,9 +1768,9 @@ document.getElementById('start-btn').addEventListener('click', () => {
 
   const cp = getCurrentPlayer();
   if (cp === game.myPlayer) {
-    announceText('You go first!');
+    triggerTurnFlash();
+    triggerHaptic();
   } else {
-    announceText(`Player ${cp} goes first`);
     autoRollIfNeeded();
   }
 });
@@ -1495,7 +1796,11 @@ diceArea.addEventListener('click', () => {
 
 // ===== SAVE/LOAD =====
 function saveState() {
-  try { localStorage.setItem('distrodice_state', JSON.stringify(game)); } catch (e) {}
+  try {
+    const toSave = { ...game };
+    toSave._playerNames = playerNames;
+    localStorage.setItem('distrodice_state', JSON.stringify(toSave));
+  } catch (e) {}
 }
 
 function loadState() {
@@ -1505,10 +1810,15 @@ function loadState() {
       const saved = JSON.parse(s);
       if (saved.seed) {
         const resumeGroup = document.getElementById('resume-group');
-        document.getElementById('resume-info').textContent = `Seed: ${saved.seed} | Player ${saved.myPlayer} of ${saved.playerCount} | Turn ${(saved.turnNumber || 0) + 1}`;
+        const savedName = saved.playerName || `Player ${saved.myPlayer}`;
+        document.getElementById('resume-info').textContent = `${savedName} | Seed: ${saved.seed} | Player ${saved.myPlayer} of ${saved.playerCount} | Turn ${(saved.turnNumber || 0) + 1}`;
         resumeGroup.style.display = 'block';
 
         document.getElementById('resume-btn').addEventListener('click', () => {
+          if (saved._playerNames) {
+            Object.assign(playerNames, saved._playerNames);
+            delete saved._playerNames;
+          }
           Object.assign(game, saved);
           document.getElementById('setup-screen').style.display = 'none';
           document.getElementById('game-screen').style.display = 'flex';
