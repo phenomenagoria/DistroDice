@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Colour Dice</title>
+<title>DistroDice</title>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js" defer></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -66,10 +67,7 @@ html, body {
   max-width: 360px;
 }
 
-.setup-group h2 {
-  font-size: 1.1rem;
-  margin-bottom: 12px;
-}
+.setup-group h2 { font-size: 1.1rem; margin-bottom: 12px; }
 
 .setup-group label {
   display: block;
@@ -91,10 +89,7 @@ html, body {
   letter-spacing: 2px;
 }
 
-.setup-group input:focus {
-  outline: none;
-  border-color: var(--blue);
-}
+.setup-group input:focus { outline: none; border-color: var(--blue); }
 
 .seed-display {
   font-size: 1.5rem;
@@ -129,6 +124,7 @@ html, body {
 .btn-secondary { background: #333; color: white; }
 .btn-danger { background: var(--red); color: white; }
 .btn-success { background: var(--green-dark); color: white; }
+.btn-warning { background: var(--yellow-dark); color: white; }
 
 .btn:disabled { opacity: 0.4; pointer-events: none; }
 
@@ -140,6 +136,19 @@ html, body {
   padding: 8px;
   gap: 8px;
 }
+
+/* Connection Status */
+.conn-status {
+  text-align: center;
+  font-size: 0.7rem;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: #333;
+  color: var(--muted);
+}
+
+.conn-status.connected { background: rgba(46,204,113,0.2); color: var(--green); }
+.conn-status.disconnected { background: rgba(231,76,60,0.2); color: var(--red); }
 
 /* Turn Banner */
 .turn-banner {
@@ -186,7 +195,6 @@ html, body {
   padding: 7px;
   gap: 2px;
   transition: transform 0.3s;
-  position: relative;
 }
 
 .die.white { background: #f0f0f0; }
@@ -205,9 +213,7 @@ html, body {
 .die.white .dot.visible { background: #222; }
 .die:not(.white) .dot.visible { background: white; }
 
-.die.rolling {
-  animation: shake 0.4s ease-in-out;
-}
+.die.rolling { animation: shake 0.4s ease-in-out; }
 
 @keyframes shake {
   0%, 100% { transform: rotate(0deg); }
@@ -226,10 +232,10 @@ html, body {
 .dice-sums {
   display: flex;
   justify-content: center;
-  gap: 12px;
+  gap: 8px;
   margin-top: 8px;
   flex-wrap: wrap;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
 }
 
 .dice-sum-tag {
@@ -303,39 +309,58 @@ html, body {
 .cell.green-cell { background: rgba(46,204,113,0.15); color: var(--green); }
 .cell.yellow-cell { background: rgba(241,196,15,0.15); color: var(--yellow); }
 
-.cell.marked {
-  color: white !important;
-  font-weight: 800;
-}
+.cell.marked { color: white !important; font-weight: 800; }
 .cell.marked.red-cell { background: var(--red); }
 .cell.marked.blue-cell { background: var(--blue); }
 .cell.marked.green-cell { background: var(--green); }
 .cell.marked.yellow-cell { background: var(--yellow); }
 
-.cell.valid {
-  border-color: white;
-  animation: glow 1s ease-in-out infinite;
+/* Valid cell indicators */
+.cell.valid-white {
+  border-color: rgba(255,255,255,0.9);
+  background: linear-gradient(135deg, rgba(255,255,255,0.3), rgba(255,255,255,0.08)) !important;
+  color: white !important;
+  box-shadow: 0 0 6px rgba(255,255,255,0.4);
+  animation: glowWhite 1.2s ease-in-out infinite;
 }
 
-@keyframes glow {
+@keyframes glowWhite {
   0%, 100% { box-shadow: 0 0 4px rgba(255,255,255,0.3); }
   50% { box-shadow: 0 0 10px rgba(255,255,255,0.6); }
 }
 
-.cell.disabled {
-  opacity: 0.3;
-  pointer-events: none;
+.cell.valid-color {
+  border-width: 2px;
+}
+.cell.valid-color.red-cell    { border-color: var(--red);    background: linear-gradient(135deg, rgba(231,76,60,0.45), rgba(231,76,60,0.15)) !important; box-shadow: 0 0 6px var(--red); }
+.cell.valid-color.blue-cell   { border-color: var(--blue);   background: linear-gradient(135deg, rgba(52,152,219,0.45), rgba(52,152,219,0.15)) !important; box-shadow: 0 0 6px var(--blue); }
+.cell.valid-color.green-cell  { border-color: var(--green);  background: linear-gradient(135deg, rgba(46,204,113,0.45), rgba(46,204,113,0.15)) !important; box-shadow: 0 0 6px var(--green); }
+.cell.valid-color.yellow-cell { border-color: var(--yellow); background: linear-gradient(135deg, rgba(241,196,15,0.45), rgba(241,196,15,0.15)) !important; box-shadow: 0 0 6px var(--yellow); }
+
+.cell.valid-color { animation: glowColor 1.2s ease-in-out infinite; }
+@keyframes glowColor {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 1; }
 }
 
-.cell.lock-cell {
-  font-size: 0.85rem;
+/* Both white and color valid */
+.cell.valid-both {
+  border-width: 2px;
+  animation: glowBoth 1.2s ease-in-out infinite;
+}
+.cell.valid-both.red-cell    { border-color: white; background: linear-gradient(135deg, rgba(255,255,255,0.25) 40%, rgba(231,76,60,0.4) 60%) !important; box-shadow: 0 0 6px var(--red), inset 0 0 4px rgba(255,255,255,0.3); }
+.cell.valid-both.blue-cell   { border-color: white; background: linear-gradient(135deg, rgba(255,255,255,0.25) 40%, rgba(52,152,219,0.4) 60%) !important; box-shadow: 0 0 6px var(--blue), inset 0 0 4px rgba(255,255,255,0.3); }
+.cell.valid-both.green-cell  { border-color: white; background: linear-gradient(135deg, rgba(255,255,255,0.25) 40%, rgba(46,204,113,0.4) 60%) !important; box-shadow: 0 0 6px var(--green), inset 0 0 4px rgba(255,255,255,0.3); }
+.cell.valid-both.yellow-cell { border-color: white; background: linear-gradient(135deg, rgba(255,255,255,0.25) 40%, rgba(241,196,15,0.4) 60%) !important; box-shadow: 0 0 6px var(--yellow), inset 0 0 4px rgba(255,255,255,0.3); }
+
+@keyframes glowBoth {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 1; }
 }
 
-.cell.locked-row {
-  opacity: 0.35;
-  pointer-events: none;
-  text-decoration: line-through;
-}
+.cell.disabled { opacity: 0.3; pointer-events: none; }
+.cell.lock-cell { font-size: 0.85rem; }
+.cell.locked-row { opacity: 0.35; pointer-events: none; text-decoration: line-through; }
 
 .row-score {
   width: 28px;
@@ -357,41 +382,17 @@ html, body {
   padding: 8px 10px;
 }
 
-.legend-title {
-  font-size: 0.75rem;
-  color: var(--muted);
-  margin-bottom: 4px;
-}
+.legend-title { font-size: 0.75rem; color: var(--muted); margin-bottom: 4px; }
 
-.legend-row {
-  display: flex;
-  gap: 2px;
-  font-size: 0.6rem;
-  flex-wrap: wrap;
-}
+.legend-row { display: flex; gap: 2px; font-size: 0.6rem; flex-wrap: wrap; }
 
-.legend-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: 27px;
-}
-
+.legend-item { display: flex; flex-direction: column; align-items: center; width: 27px; }
 .legend-marks { color: var(--muted); }
 .legend-pts { font-weight: 700; }
 
 /* Penalties */
-.penalties-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 0;
-}
-
-.penalties-row span {
-  font-size: 0.8rem;
-  color: var(--muted);
-}
+.penalties-row { display: flex; align-items: center; gap: 6px; padding: 6px 0; }
+.penalties-row span { font-size: 0.8rem; color: var(--muted); }
 
 .penalty-box {
   width: 32px;
@@ -406,18 +407,10 @@ html, body {
   transition: all 0.15s;
 }
 
-.penalty-box.checked {
-  background: var(--red);
-  border-color: var(--red);
-  color: white;
-}
+.penalty-box.checked { background: var(--red); border-color: var(--red); color: white; }
 
 /* Score Summary */
-.score-summary {
-  background: var(--card-bg);
-  border-radius: 12px;
-  padding: 10px;
-}
+.score-summary { background: var(--card-bg); border-radius: 12px; padding: 10px; }
 
 .score-summary-grid {
   display: grid;
@@ -427,10 +420,7 @@ html, body {
   text-align: center;
 }
 
-.score-summary-grid .header {
-  color: var(--muted);
-  font-size: 0.65rem;
-}
+.score-summary-grid .header { color: var(--muted); font-size: 0.65rem; }
 
 .score-summary-grid .total {
   font-weight: 800;
@@ -447,7 +437,6 @@ html, body {
   gap: 8px;
   padding-bottom: env(safe-area-inset-bottom, 8px);
 }
-
 .actions .btn { margin-top: 0; }
 
 /* Game Over Overlay */
@@ -462,10 +451,7 @@ html, body {
   justify-content: center;
   padding: 20px;
 }
-
-.game-over-overlay.visible {
-  display: flex;
-}
+.game-over-overlay.visible { display: flex; }
 
 .game-over-box {
   background: var(--card-bg);
@@ -476,10 +462,7 @@ html, body {
   width: 100%;
 }
 
-.game-over-box h2 {
-  font-size: 1.5rem;
-  margin-bottom: 12px;
-}
+.game-over-box h2 { font-size: 1.5rem; margin-bottom: 12px; }
 
 .game-over-box .final-score {
   font-size: 2.5rem;
@@ -491,7 +474,7 @@ html, body {
   background-clip: text;
 }
 
-/* Lock notification */
+/* Notification */
 .notification {
   position: fixed;
   top: 20px;
@@ -524,7 +507,6 @@ html, body {
   justify-content: center;
   padding: 20px;
 }
-
 .lock-modal.visible { display: flex; }
 
 .lock-modal-box {
@@ -535,16 +517,14 @@ html, body {
   max-width: 300px;
   width: 100%;
 }
-
 .lock-modal-box .btn { margin-top: 10px; }
 
-/* Responsive adjustments */
+/* Responsive */
 @media (min-width: 400px) {
   .cell { width: 30px; height: 30px; font-size: 0.75rem; }
   .row-label { width: 16px; }
   .die { width: 54px; height: 54px; padding: 8px; }
 }
-
 @media (min-width: 500px) {
   .cell { width: 34px; height: 34px; }
 }
@@ -554,7 +534,7 @@ html, body {
 
 <!-- SETUP SCREEN -->
 <div id="setup-screen">
-  <h1>Colour Dice</h1>
+  <h1>DistroDice</h1>
   <p class="subtitle">A multiplayer dice game</p>
 
   <div class="setup-group" id="create-group">
@@ -594,6 +574,7 @@ html, body {
 
 <!-- GAME SCREEN -->
 <div id="game-screen">
+  <div class="conn-status" id="conn-status">Offline — manual mode</div>
   <div class="turn-banner" id="turn-banner">Turn 1</div>
 
   <div class="dice-area" id="dice-area">
@@ -671,7 +652,6 @@ function generateSeed() {
 
 // ===== SCORING =====
 function getScore(marks) {
-  // Triangular: 1,3,6,10,15,21,28,36,45,55,66,78
   return marks * (marks + 1) / 2;
 }
 
@@ -690,24 +670,22 @@ let game = {
   myPlayer: 1,
   turnNumber: 0,
   startingPlayer: 1,
-  phase: 'roll', // roll, white, color, done
+  phase: 'roll', // roll, mark, waiting, done
   isMyTurn: false,
   diceRolled: false,
   dice: { white1: 0, white2: 0, red: 0, blue: 0, green: 0, yellow: 0 },
   whiteSum: 0,
-  colorCombos: [], // [{color, sum}]
   usedWhite: false,
   usedColor: false,
-  // Scorecard state
   marked: { red: [], blue: [], green: [], yellow: [] },
   rowLocked: { red: false, blue: false, green: false, yellow: false },
   hasLockBonus: { red: false, blue: false, green: false, yellow: false },
   penalties: 0,
   gameOver: false,
-  lockedRowCount: 0, // track globally locked rows
+  lockedRowCount: 0,
 };
 
-// Undo stack — stores snapshots of turn-relevant state before each action
+// ===== UNDO =====
 let undoStack = [];
 
 function snapshotForUndo() {
@@ -724,28 +702,195 @@ function snapshotForUndo() {
   };
 }
 
-function pushUndo() {
-  undoStack.push(snapshotForUndo());
-}
+function pushUndo() { undoStack.push(snapshotForUndo()); }
 
 function doUndo() {
   if (undoStack.length === 0) return;
   const snap = undoStack.pop();
-  game.phase = snap.phase;
-  game.usedWhite = snap.usedWhite;
-  game.usedColor = snap.usedColor;
-  game.marked = snap.marked;
-  game.rowLocked = snap.rowLocked;
-  game.hasLockBonus = snap.hasLockBonus;
-  game.penalties = snap.penalties;
-  game.lockedRowCount = snap.lockedRowCount;
-  game.gameOver = snap.gameOver;
-  // Hide game over overlay if we undo back from it
+  Object.assign(game, snap);
   document.getElementById('game-over-overlay').classList.remove('visible');
   renderAll();
 }
 
-// ===== DICE ROLLING =====
+// ===== PEERJS NETWORKING =====
+let peer = null;
+let connections = [];
+let isHost = false;
+let peerConnected = false;
+let readyPlayers = new Set();
+
+function setupPeer() {
+  if (typeof Peer === 'undefined') {
+    updateConnStatus('offline');
+    return;
+  }
+
+  const peerId = 'distrodice-' + game.seed.toLowerCase();
+
+  try {
+    if (game.myPlayer === 1) {
+      // Host
+      isHost = true;
+      peer = new Peer(peerId);
+
+      peer.on('open', () => {
+        peerConnected = true;
+        updateConnStatus('host');
+      });
+
+      peer.on('connection', conn => {
+        conn.on('open', () => {
+          connections.push(conn);
+          updateConnStatus('host');
+          // Send current turn state to new connection
+          conn.send({ type: 'state', turnNumber: game.turnNumber });
+        });
+        conn.on('data', data => handlePeerMessage(data, conn));
+        conn.on('close', () => {
+          connections = connections.filter(c => c !== conn);
+          updateConnStatus('host');
+        });
+      });
+
+      peer.on('error', err => {
+        console.warn('PeerJS host error:', err);
+        peerConnected = false;
+        updateConnStatus('offline');
+      });
+    } else {
+      // Client
+      peer = new Peer();
+
+      peer.on('open', () => {
+        const conn = peer.connect(peerId, { reliable: true });
+        conn.on('open', () => {
+          connections = [conn];
+          peerConnected = true;
+          updateConnStatus('connected');
+        });
+        conn.on('data', data => handlePeerMessage(data));
+        conn.on('close', () => {
+          connections = [];
+          peerConnected = false;
+          updateConnStatus('disconnected');
+        });
+      });
+
+      peer.on('error', err => {
+        console.warn('PeerJS client error:', err);
+        peerConnected = false;
+        updateConnStatus('offline');
+      });
+    }
+  } catch (e) {
+    console.warn('PeerJS setup failed:', e);
+    updateConnStatus('offline');
+  }
+}
+
+function updateConnStatus(status) {
+  const el = document.getElementById('conn-status');
+  switch (status) {
+    case 'host':
+      el.textContent = `Hosting — ${connections.length} player(s) connected`;
+      el.className = 'conn-status connected';
+      break;
+    case 'connected':
+      el.textContent = 'Connected to host';
+      el.className = 'conn-status connected';
+      break;
+    case 'disconnected':
+      el.textContent = 'Disconnected — manual mode';
+      el.className = 'conn-status disconnected';
+      break;
+    default:
+      el.textContent = 'Offline — manual mode';
+      el.className = 'conn-status';
+      break;
+  }
+}
+
+function broadcast(data) {
+  connections.forEach(conn => {
+    try { conn.send(data); } catch (e) {}
+  });
+}
+
+function sendToHost(data) {
+  if (connections.length > 0) {
+    try { connections[0].send(data); } catch (e) {}
+  }
+}
+
+function handlePeerMessage(data, fromConn) {
+  switch (data.type) {
+    case 'state':
+      // Sync turn number if we're behind
+      if (data.turnNumber > game.turnNumber) {
+        game.turnNumber = data.turnNumber;
+        resetTurnState();
+        renderAll();
+        autoRollIfNeeded();
+      }
+      break;
+
+    case 'ready':
+      if (isHost) {
+        readyPlayers.add(data.player);
+        broadcast({ type: 'readyCount', ready: readyPlayers.size, total: game.playerCount });
+        // Also update host UI
+        updateWaitingText(readyPlayers.size, game.playerCount);
+        if (readyPlayers.size >= game.playerCount) {
+          readyPlayers.clear();
+          game.turnNumber++;
+          resetTurnState();
+          broadcast({ type: 'nextTurn', turnNumber: game.turnNumber });
+          renderAll();
+          autoRollIfNeeded();
+          announceNewTurn();
+        }
+      }
+      break;
+
+    case 'readyCount':
+      updateWaitingText(data.ready, data.total);
+      break;
+
+    case 'nextTurn':
+      game.turnNumber = data.turnNumber;
+      resetTurnState();
+      renderAll();
+      autoRollIfNeeded();
+      announceNewTurn();
+      break;
+
+    case 'lock':
+      if (!game.rowLocked[data.color]) {
+        game.rowLocked[data.color] = true;
+        game.lockedRowCount = COLORS.filter(c => game.rowLocked[c]).length;
+        showNotification(`${data.color.toUpperCase()} row locked by another player!`);
+        checkGameEnd();
+        renderAll();
+      }
+      if (isHost && fromConn) {
+        // Relay to other clients
+        connections.forEach(c => {
+          if (c !== fromConn) {
+            try { c.send(data); } catch (e) {}
+          }
+        });
+      }
+      break;
+  }
+}
+
+function updateWaitingText(ready, total) {
+  if (game.phase === 'waiting') {
+    document.getElementById('phase-bar').textContent = `Waiting for players... (${ready}/${total} ready)`;
+  }
+}
+
+// ===== DICE =====
 function rollDiceForTurn(seed, turn) {
   const rng = mulberry32(hashSeed(seed) + turn * 7919);
   return {
@@ -767,36 +912,70 @@ function getCurrentPlayer() {
   return ((game.startingPlayer - 1 + game.turnNumber) % game.playerCount) + 1;
 }
 
+// ===== CELL VALIDITY =====
+function getCellValidity(color, num) {
+  // Returns { white, color } booleans
+  const result = { white: false, color: false };
+
+  if (game.rowLocked[color]) return result;
+  if (game.marked[color].includes(num)) return result;
+  if (!game.diceRolled || game.phase !== 'mark') return result;
+
+  const nums = ROW_NUMBERS[color];
+  const idx = nums.indexOf(num);
+  const isLastCell = idx === nums.length - 1;
+
+  // Last cell needs 5+ marks
+  if (isLastCell && game.marked[color].length < 5) return result;
+
+  // Must be to the right of rightmost mark
+  const markedIndices = game.marked[color].map(n => nums.indexOf(n));
+  const rightmostMark = markedIndices.length > 0 ? Math.max(...markedIndices) : -1;
+  if (idx <= rightmostMark) return result;
+
+  // White validity
+  if (!game.usedWhite) {
+    const ws = game.dice.white1 + game.dice.white2;
+    if (num === ws) result.white = true;
+  }
+
+  // Color combo validity (active player only)
+  if (game.isMyTurn && !game.usedColor) {
+    const d = game.dice;
+    const seen = new Set();
+    for (const w of [d.white1, d.white2]) {
+      const sum = w + d[color];
+      if (!seen.has(sum)) {
+        seen.add(sum);
+        if (sum === num) { result.color = true; break; }
+      }
+    }
+  }
+
+  return result;
+}
+
 // ===== UI RENDERING =====
 function renderDice() {
   const container = document.getElementById('dice-container');
   const diceOrder = [
-    { key: 'white1', cls: 'white', label: 'W1' },
-    { key: 'white2', cls: 'white', label: 'W2' },
-    { key: 'red', cls: 'red', label: 'R' },
-    { key: 'blue', cls: 'blue', label: 'B' },
-    { key: 'green', cls: 'green', label: 'G' },
-    { key: 'yellow', cls: 'yellow', label: 'Y' },
+    { key: 'white1', cls: 'white' },
+    { key: 'white2', cls: 'white' },
+    { key: 'red', cls: 'red' },
+    { key: 'blue', cls: 'blue' },
+    { key: 'green', cls: 'green' },
+    { key: 'yellow', cls: 'yellow' },
   ];
-
   container.innerHTML = diceOrder.map(d => {
     const val = game.diceRolled ? game.dice[d.key] : 0;
-    return `<div class="die ${d.cls} ${game.diceRolled ? '' : ''}" data-key="${d.key}">
-      ${getDieDots(val)}
-    </div>`;
+    return `<div class="die ${d.cls}">${getDieDots(val)}</div>`;
   }).join('');
 }
 
 function getDieDots(val) {
-  // 3x3 grid positions: tl, tm, tr, ml, mm, mr, bl, bm, br
   const patterns = {
-    0: [],
-    1: [4],
-    2: [2, 6],
-    3: [2, 4, 6],
-    4: [0, 2, 6, 8],
-    5: [0, 2, 4, 6, 8],
-    6: [0, 2, 3, 5, 6, 8],
+    0: [], 1: [4], 2: [2, 6], 3: [2, 4, 6],
+    4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8],
   };
   const active = patterns[val] || [];
   let html = '';
@@ -807,40 +986,35 @@ function getDieDots(val) {
 }
 
 function renderDiceSums() {
+  const hint = document.getElementById('dice-hint');
   const el = document.getElementById('dice-sums');
-  document.getElementById('dice-hint').textContent = game.diceRolled ? '' : (game.phase === 'roll' ? 'Tap or swipe up to roll' : '');
-  if (!game.diceRolled) { el.innerHTML = ''; return; }
+
+  if (!game.diceRolled) {
+    hint.textContent = (game.phase === 'roll' && game.isMyTurn) ? 'Tap or swipe up to roll' : '';
+    el.innerHTML = '';
+    return;
+  }
+  hint.textContent = '';
 
   const d = game.dice;
   const ws = d.white1 + d.white2;
   let html = `<span class="dice-sum-tag" style="background:rgba(255,255,255,0.15);">White: ${ws}</span>`;
 
   if (game.isMyTurn) {
-    const combos = getColorCombos();
-    combos.forEach(c => {
-      const bg = `var(--${c.color})`;
-      html += `<span class="dice-sum-tag" style="background:${bg};color:white;">W+${c.color[0].toUpperCase()}: ${c.sum}</span>`;
-    });
-  }
-  el.innerHTML = html;
-}
-
-function getColorCombos() {
-  const d = game.dice;
-  const combos = [];
-  const seen = new Set();
-  for (const color of COLORS) {
-    if (game.rowLocked[color]) continue;
-    for (const w of [d.white1, d.white2]) {
-      const sum = w + d[color];
-      const key = `${color}-${sum}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        combos.push({ color, sum });
+    const seen = new Set();
+    for (const color of COLORS) {
+      if (game.rowLocked[color]) continue;
+      for (const w of [d.white1, d.white2]) {
+        const sum = w + d[color];
+        const key = `${color}-${sum}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          html += `<span class="dice-sum-tag" style="background:var(--${color});color:white;">${color[0].toUpperCase()}:${sum}</span>`;
+        }
       }
     }
   }
-  return combos;
+  el.innerHTML = html;
 }
 
 function renderScorecard() {
@@ -859,34 +1033,43 @@ function renderScorecard() {
     for (let i = 0; i < nums.length; i++) {
       const num = nums[i];
       const isMarked = marks.includes(num);
-      const isValid = !isLocked && isValidMark(color, num);
-      const isDisabled = isLocked || (!isMarked && !isValid);
-      const isLastCell = i === nums.length - 1;
 
+      if (isMarked) {
+        html += `<div class="cell ${color}-cell marked"  data-color="${color}" data-num="${num}">X</div>`;
+        continue;
+      }
+
+      if (isLocked) {
+        html += `<div class="cell ${color}-cell locked-row">${num}</div>`;
+        continue;
+      }
+
+      const v = getCellValidity(color, num);
+      const isAnyValid = v.white || v.color;
       let cls = `cell ${color}-cell`;
-      if (isMarked) cls += ' marked';
-      if (isValid && !isMarked) cls += ' valid';
-      if (isDisabled && !isMarked) cls += ' disabled';
-      if (isLocked && !isMarked) cls += ' locked-row';
 
-      html += `<div class="${cls}" data-color="${color}" data-num="${num}" data-index="${i}">${isMarked ? 'X' : num}</div>`;
+      if (v.white && v.color) cls += ' valid-both';
+      else if (v.white) cls += ' valid-white';
+      else if (v.color) cls += ' valid-color';
+      else cls += ' disabled';
+
+      html += `<div class="${cls}" data-color="${color}" data-num="${num}">${num}</div>`;
     }
 
     // Lock cell
     const lockMarked = game.hasLockBonus[color];
     let lockCls = `cell ${color}-cell lock-cell`;
     if (lockMarked) lockCls += ' marked';
-    if (isLocked && !lockMarked) lockCls += ' locked-row';
-    html += `<div class="${lockCls}" data-color="${color}" data-action="lock">${lockMarked ? 'X' : '🔒'}</div>`;
+    else if (isLocked) lockCls += ' locked-row';
+    html += `<div class="${lockCls}">${lockMarked ? 'X' : '🔒'}</div>`;
 
-    // Row score
     html += `<div class="row-score">${getScore(markCount)}</div>`;
     html += `</div>`;
   }
 
   el.innerHTML = html;
 
-  // Add click handlers
+  // Click handlers for valid cells
   el.querySelectorAll('.cell[data-num]').forEach(cell => {
     cell.addEventListener('click', () => handleCellClick(cell.dataset.color, parseInt(cell.dataset.num)));
   });
@@ -906,7 +1089,7 @@ function renderPenalties() {
   let html = '<span>Penalties (-5 each):</span>';
   for (let i = 0; i < 4; i++) {
     const checked = i < game.penalties;
-    html += `<div class="penalty-box ${checked ? 'checked' : ''}" data-index="${i}">${checked ? 'X' : ''}</div>`;
+    html += `<div class="penalty-box ${checked ? 'checked' : ''}">${checked ? 'X' : ''}</div>`;
   }
   el.innerHTML = html;
 }
@@ -923,7 +1106,6 @@ function renderScoreSummary() {
     scores[color] = getScore(mc);
     totalScore += scores[color];
   }
-
   const penaltyScore = game.penalties * 5;
   totalScore -= penaltyScore;
 
@@ -941,31 +1123,22 @@ function renderActions() {
   const el = document.getElementById('actions');
   let html = '';
 
-  switch (game.phase) {
-    case 'roll':
-      // Roll button shown in dice area
-      html = '';
-      break;
-    case 'white':
-      html += `<button class="btn btn-secondary" onclick="skipWhite()">Skip White</button>`;
-      break;
-    case 'color':
-      html += `<button class="btn btn-secondary" onclick="skipColor()">Skip Colored</button>`;
-      break;
-    case 'done':
-      html += `<button class="btn btn-primary" onclick="nextTurn()">Next Turn</button>`;
-      if (!game.isMyTurn && game.phase === 'done' && !game.usedWhite) {
-        // They already had the option
-      }
-      break;
+  if (game.phase === 'mark') {
+    html += `<button class="btn btn-success" onclick="finishMarking()">Done</button>`;
+  } else if (game.phase === 'waiting') {
+    html += `<button class="btn btn-secondary" disabled>Waiting...</button>`;
+    // Fallback manual advance if no peer connection
+    if (!peerConnected) {
+      html += `<button class="btn btn-primary" onclick="manualNextTurn()">Next Turn</button>`;
+    }
+  } else if (game.phase === 'done') {
+    html += `<button class="btn btn-primary" onclick="manualNextTurn()">Next Turn</button>`;
   }
 
-  // Undo button (only when there are actions to undo within this turn)
-  if (undoStack.length > 0) {
+  if (undoStack.length > 0 && (game.phase === 'mark')) {
     html += `<button class="btn btn-secondary" onclick="doUndo()" style="flex:0 0 auto;width:auto;padding:12px 16px;">Undo</button>`;
   }
 
-  // Manual lock button
   html += `<button class="btn btn-danger" onclick="openLockModal()" style="flex:0 0 auto;width:auto;padding:12px 16px;">Lock Row</button>`;
 
   el.innerHTML = html;
@@ -987,18 +1160,28 @@ function renderTurnBanner() {
 
 function renderPhaseBar() {
   const el = document.getElementById('phase-bar');
-
   switch (game.phase) {
     case 'roll':
-      el.textContent = game.isMyTurn ? 'Tap or swipe the dice to roll!' : 'Tap dice to reveal roll';
+      el.textContent = game.isMyTurn ? 'Tap or swipe the dice to roll!' : 'Rolling...';
       break;
-    case 'white':
-      el.textContent = `White sum: ${game.whiteSum} — Tap a matching cell in any row`;
-      break;
-    case 'color':
+    case 'mark':
       if (game.isMyTurn) {
-        el.textContent = 'Pick a white + colored combo — Tap a valid cell';
+        const parts = [];
+        if (!game.usedWhite) parts.push('white');
+        if (!game.usedColor) parts.push('colored');
+        if (parts.length > 0) {
+          el.textContent = `Tap a highlighted cell — ${parts.join(' & ')} combos available`;
+        } else {
+          el.textContent = 'All combos used — tap Done';
+        }
+      } else {
+        el.textContent = game.usedWhite
+          ? 'White used — tap Done when ready'
+          : `White sum: ${game.whiteSum} — tap a cell or Done`;
       }
+      break;
+    case 'waiting':
+      el.textContent = 'Waiting for other players...';
       break;
     case 'done':
       el.textContent = 'Turn complete — tap Next Turn';
@@ -1018,107 +1201,104 @@ function renderAll() {
 }
 
 // ===== GAME LOGIC =====
-function isValidMark(color, num) {
-  if (game.rowLocked[color]) return false;
-  if (game.marked[color].includes(num)) return false;
-
-  const nums = ROW_NUMBERS[color];
-  const idx = nums.indexOf(num);
-  const isLastCell = idx === nums.length - 1;
-
-  // If it's the last cell, need 5+ marks
-  if (isLastCell && game.marked[color].length < 5) return false;
-
-  // Must be to the right of all existing marks
-  const markedIndices = game.marked[color].map(n => nums.indexOf(n));
-  const rightmostMark = markedIndices.length > 0 ? Math.max(...markedIndices) : -1;
-
-  if (idx <= rightmostMark) return false;
-
-  // Check if this number matches current valid sums
-  if (!game.diceRolled) return false;
-
-  const validNums = getValidNumbersForColor(color);
-  return validNums.includes(num);
-}
-
-function getValidNumbersForColor(color) {
-  if (!game.diceRolled) return [];
-
-  const validNums = new Set();
-
-  if (game.phase === 'white') {
-    validNums.add(game.dice.white1 + game.dice.white2);
-  }
-
-  if (game.phase === 'color' && game.isMyTurn) {
-    const combos = getColorCombos();
-    combos.filter(c => c.color === color).forEach(c => validNums.add(c.sum));
-  }
-
-  return [...validNums];
-}
-
 function handleCellClick(color, num) {
-  if (game.gameOver) return;
+  if (game.gameOver || game.phase !== 'mark') return;
   if (game.rowLocked[color]) return;
-  if (!game.diceRolled) return;
   if (game.marked[color].includes(num)) return;
 
+  const v = getCellValidity(color, num);
+  if (!v.white && !v.color) return;
+
+  pushUndo();
+
+  game.marked[color].push(num);
+
+  // Decide which slot to consume
+  if (v.color && v.white) {
+    // Both valid — prefer color (more restrictive), preserves white for other rows
+    game.usedColor = true;
+  } else if (v.color) {
+    game.usedColor = true;
+  } else {
+    game.usedWhite = true;
+  }
+
+  // Check if this locks the row
   const nums = ROW_NUMBERS[color];
   const idx = nums.indexOf(num);
-  const isLastCell = idx === nums.length - 1;
+  if (idx === nums.length - 1) {
+    lockRow(color, true);
+  }
 
-  // Check rightmost constraint
-  const markedIndices = game.marked[color].map(n => nums.indexOf(n));
-  const rightmostMark = markedIndices.length > 0 ? Math.max(...markedIndices) : -1;
-  if (idx <= rightmostMark) return;
+  // If both slots used (active) or white used (non-active), auto-finish
+  if (game.isMyTurn && game.usedWhite && game.usedColor) {
+    game.phase = 'mark'; // stay in mark so they can review, but show "all used"
+  }
+  if (!game.isMyTurn && game.usedWhite) {
+    // Non-active player used their only option
+  }
 
-  // Check last cell requirement
-  if (isLastCell && game.marked[color].length < 5) return;
+  renderAll();
+}
 
-  if (game.phase === 'white') {
-    const ws = game.dice.white1 + game.dice.white2;
-    if (num !== ws) return;
+function finishMarking() {
+  if (game.gameOver) return;
 
+  // Active player who marked nothing gets auto-penalty
+  if (game.isMyTurn && !game.usedWhite && !game.usedColor) {
     pushUndo();
-    game.marked[color].push(num);
-    game.usedWhite = true;
-
-    // Check if marking the last cell locks the row
-    if (isLastCell) {
-      lockRow(color, true);
+    game.penalties++;
+    showNotification('No moves made — penalty!');
+    if (game.penalties >= 4) {
+      checkGameEnd();
+      if (game.gameOver) return;
     }
+    renderPenalties();
+  }
 
-    if (game.isMyTurn) {
-      game.phase = 'color';
+  // Send ready signal
+  if (peerConnected) {
+    const msg = { type: 'ready', player: game.myPlayer };
+    if (isHost) {
+      readyPlayers.add(game.myPlayer);
+      broadcast({ type: 'readyCount', ready: readyPlayers.size, total: game.playerCount });
+      updateWaitingText(readyPlayers.size, game.playerCount);
+      if (readyPlayers.size >= game.playerCount) {
+        readyPlayers.clear();
+        game.turnNumber++;
+        resetTurnState();
+        broadcast({ type: 'nextTurn', turnNumber: game.turnNumber });
+        renderAll();
+        autoRollIfNeeded();
+        announceNewTurn();
+        return;
+      }
     } else {
-      game.phase = 'done';
+      sendToHost(msg);
     }
-    renderAll();
-    return;
-  }
-
-  if (game.phase === 'color' && game.isMyTurn) {
-    const combos = getColorCombos();
-    const matchingCombo = combos.find(c => c.color === color && c.sum === num);
-    if (!matchingCombo) return;
-
-    pushUndo();
-    game.marked[color].push(num);
-    game.usedColor = true;
-
-    if (isLastCell) {
-      lockRow(color, true);
-    }
-
+    game.phase = 'waiting';
+  } else {
     game.phase = 'done';
-    if (!game.usedWhite && !game.usedColor) {
-      // Should not reach here
-    }
-    renderAll();
-    return;
   }
+  renderAll();
+}
+
+function manualNextTurn() {
+  game.turnNumber++;
+  resetTurnState();
+  renderAll();
+  autoRollIfNeeded();
+  announceNewTurn();
+}
+
+function resetTurnState() {
+  undoStack = [];
+  game.phase = 'roll';
+  game.diceRolled = false;
+  game.usedWhite = false;
+  game.usedColor = false;
+  game.dice = { white1: 0, white2: 0, red: 0, blue: 0, green: 0, yellow: 0 };
+  game.whiteSum = 0;
 }
 
 function lockRow(color, myLock) {
@@ -1127,48 +1307,40 @@ function lockRow(color, myLock) {
     game.hasLockBonus[color] = true;
     showNotification(`You locked the ${color.toUpperCase()} row! (+1 bonus mark)`);
     announceText(`${color} row locked!`);
+    // Broadcast lock
+    const msg = { type: 'lock', color: color };
+    if (isHost) broadcast(msg);
+    else sendToHost(msg);
   }
   game.lockedRowCount = COLORS.filter(c => game.rowLocked[c]).length;
   checkGameEnd();
 }
 
-function skipWhite() {
-  pushUndo();
-  if (game.isMyTurn) {
-    game.phase = 'color';
-  } else {
-    game.phase = 'done';
-  }
-  renderAll();
+function doRoll() {
+  if (game.diceRolled || game.gameOver) return;
+
+  const dice = document.querySelectorAll('.die');
+  dice.forEach(d => d.classList.add('rolling'));
+
+  setTimeout(() => {
+    game.dice = rollDiceForTurn(game.seed, game.turnNumber);
+    game.diceRolled = true;
+    game.whiteSum = game.dice.white1 + game.dice.white2;
+    game.phase = 'mark';
+    dice.forEach(d => d.classList.remove('rolling'));
+    renderAll();
+  }, 450);
 }
 
-function skipColor() {
-  pushUndo();
-  if (!game.usedWhite && !game.usedColor && game.isMyTurn) {
-    // Active player skipped both - penalty
-    game.penalties++;
-    showNotification('No moves made - penalty!');
-    if (game.penalties >= 4) {
-      checkGameEnd();
-    }
+function autoRollIfNeeded() {
+  if (game.phase === 'roll' && !game.isMyTurn) {
+    setTimeout(() => {
+      if (game.phase === 'roll') doRoll();
+    }, 600);
   }
-  game.phase = 'done';
-  renderAll();
 }
 
-function nextTurn() {
-  undoStack = [];
-  game.turnNumber++;
-  game.phase = 'roll';
-  game.diceRolled = false;
-  game.usedWhite = false;
-  game.usedColor = false;
-  game.dice = { white1: 0, white2: 0, red: 0, blue: 0, green: 0, yellow: 0 };
-  game.whiteSum = 0;
-  game.colorCombos = [];
-  renderAll();
-
-  // Announce whose turn it is
+function announceNewTurn() {
   const cp = getCurrentPlayer();
   if (cp === game.myPlayer) {
     announceText('Your turn!');
@@ -1177,35 +1349,10 @@ function nextTurn() {
   }
 }
 
-function doRoll() {
-  if (game.diceRolled || game.gameOver) return;
-
-  // Animate
-  const dice = document.querySelectorAll('.die');
-  dice.forEach(d => d.classList.add('rolling'));
-
-  setTimeout(() => {
-    game.dice = rollDiceForTurn(game.seed, game.turnNumber);
-    game.diceRolled = true;
-    game.whiteSum = game.dice.white1 + game.dice.white2;
-    game.colorCombos = getColorCombos();
-    game.phase = 'white';
-
-    dice.forEach(d => d.classList.remove('rolling'));
-    renderAll();
-  }, 450);
-}
-
 function checkGameEnd() {
   let reason = '';
-
-  if (game.penalties >= 4) {
-    reason = 'You used all 4 penalties!';
-  }
-
-  if (game.lockedRowCount >= 2) {
-    reason = '2 rows have been locked!';
-  }
+  if (game.penalties >= 4) reason = 'You used all 4 penalties!';
+  if (game.lockedRowCount >= 2) reason = '2 rows have been locked!';
 
   if (reason) {
     game.gameOver = true;
@@ -1229,7 +1376,6 @@ function checkGameEnd() {
 function showNotification(text) {
   const existing = document.querySelector('.notification');
   if (existing) existing.remove();
-
   const el = document.createElement('div');
   el.className = 'notification';
   el.textContent = text;
@@ -1257,9 +1403,7 @@ function openLockModal() {
       html += `<button class="btn btn-danger" onclick="externalLockRow('${color}')" style="margin-top:8px;">Lock ${color.toUpperCase()} Row</button>`;
     }
   }
-  if (!html) {
-    html = '<p style="color:var(--muted);margin:10px 0;">All rows are already locked.</p>';
-  }
+  if (!html) html = '<p style="color:var(--muted);margin:10px 0;">All rows are already locked.</p>';
   btns.innerHTML = html;
   modal.classList.add('visible');
 }
@@ -1274,7 +1418,7 @@ function externalLockRow(color) {
   renderAll();
 }
 
-// ===== SETUP LOGIC =====
+// ===== SETUP =====
 document.getElementById('create-btn').addEventListener('click', () => {
   const count = parseInt(document.getElementById('player-count').value);
   if (count < 2 || count > 8) return;
@@ -1319,20 +1463,20 @@ document.getElementById('start-btn').addEventListener('click', () => {
 
   renderLegend();
   renderAll();
+  setupPeer();
 
   const cp = getCurrentPlayer();
   if (cp === game.myPlayer) {
     announceText('You go first!');
   } else {
     announceText(`Player ${cp} goes first`);
+    autoRollIfNeeded();
   }
 });
 
-// ===== DICE INTERACTION (tap & swipe) =====
+// ===== DICE INTERACTION =====
 const diceArea = document.getElementById('dice-area');
-let touchStartY = 0;
-
-let touchHandled = false;
+let touchStartY = 0, touchHandled = false;
 
 diceArea.addEventListener('touchstart', e => {
   touchStartY = e.touches[0].clientY;
@@ -1345,25 +1489,21 @@ diceArea.addEventListener('touchend', e => {
 }, { passive: true });
 
 diceArea.addEventListener('click', () => {
-  // Avoid double-fire on touch devices
   if (!touchHandled && game.phase === 'roll') doRoll();
   touchHandled = false;
 });
 
-// ===== SAVE/LOAD STATE =====
+// ===== SAVE/LOAD =====
 function saveState() {
-  try {
-    localStorage.setItem('colourdice_state', JSON.stringify(game));
-  } catch (e) {}
+  try { localStorage.setItem('distrodice_state', JSON.stringify(game)); } catch (e) {}
 }
 
 function loadState() {
   try {
-    const s = localStorage.getItem('colourdice_state');
+    const s = localStorage.getItem('distrodice_state');
     if (s) {
       const saved = JSON.parse(s);
       if (saved.seed) {
-        // Show resume UI instead of blocking confirm()
         const resumeGroup = document.getElementById('resume-group');
         document.getElementById('resume-info').textContent = `Seed: ${saved.seed} | Player ${saved.myPlayer} of ${saved.playerCount} | Turn ${(saved.turnNumber || 0) + 1}`;
         resumeGroup.style.display = 'block';
@@ -1374,10 +1514,12 @@ function loadState() {
           document.getElementById('game-screen').style.display = 'flex';
           renderLegend();
           renderAll();
+          setupPeer();
+          autoRollIfNeeded();
         });
 
         document.getElementById('discard-btn').addEventListener('click', () => {
-          localStorage.removeItem('colourdice_state');
+          localStorage.removeItem('distrodice_state');
           resumeGroup.style.display = 'none';
         });
       }
