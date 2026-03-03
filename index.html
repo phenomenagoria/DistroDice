@@ -1,0 +1,1393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Colour Dice</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --red: #e74c3c;
+  --red-dark: #c0392b;
+  --blue: #3498db;
+  --blue-dark: #2980b9;
+  --green: #2ecc71;
+  --green-dark: #27ae60;
+  --yellow: #f1c40f;
+  --yellow-dark: #d4ac0f;
+  --bg: #1a1a2e;
+  --card-bg: #16213e;
+  --text: #eee;
+  --muted: #888;
+}
+
+html, body {
+  height: 100%;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  overflow-x: hidden;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ===== SETUP SCREEN ===== */
+#setup-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 20px;
+  gap: 16px;
+}
+
+#setup-screen h1 {
+  font-size: 2rem;
+  margin-bottom: 8px;
+  background: linear-gradient(135deg, var(--red), var(--yellow), var(--green), var(--blue));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+#setup-screen p.subtitle {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin-bottom: 16px;
+}
+
+.setup-group {
+  background: var(--card-bg);
+  border-radius: 12px;
+  padding: 20px;
+  width: 100%;
+  max-width: 360px;
+}
+
+.setup-group h2 {
+  font-size: 1.1rem;
+  margin-bottom: 12px;
+}
+
+.setup-group label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 4px;
+  margin-top: 10px;
+}
+
+.setup-group input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #333;
+  background: #0f0f23;
+  color: var(--text);
+  font-size: 1rem;
+  text-align: center;
+  letter-spacing: 2px;
+}
+
+.setup-group input:focus {
+  outline: none;
+  border-color: var(--blue);
+}
+
+.seed-display {
+  font-size: 1.5rem;
+  font-weight: bold;
+  letter-spacing: 4px;
+  text-align: center;
+  padding: 10px;
+  background: #0f0f23;
+  border-radius: 8px;
+  margin: 8px 0;
+  font-family: monospace;
+  user-select: all;
+  -webkit-user-select: all;
+}
+
+.btn {
+  display: block;
+  width: 100%;
+  padding: 12px;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 12px;
+  transition: transform 0.1s, opacity 0.1s;
+}
+
+.btn:active { transform: scale(0.97); opacity: 0.9; }
+
+.btn-primary { background: var(--blue); color: white; }
+.btn-secondary { background: #333; color: white; }
+.btn-danger { background: var(--red); color: white; }
+.btn-success { background: var(--green-dark); color: white; }
+
+.btn:disabled { opacity: 0.4; pointer-events: none; }
+
+/* ===== GAME SCREEN ===== */
+#game-screen {
+  display: none;
+  flex-direction: column;
+  min-height: 100vh;
+  padding: 8px;
+  gap: 8px;
+}
+
+/* Turn Banner */
+.turn-banner {
+  text-align: center;
+  padding: 8px;
+  border-radius: 8px;
+  background: var(--card-bg);
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.turn-banner.my-turn {
+  background: var(--blue-dark);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* Dice Area */
+.dice-area {
+  background: var(--card-bg);
+  border-radius: 12px;
+  padding: 12px;
+  text-align: center;
+}
+
+.dice-container {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.die {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  padding: 7px;
+  gap: 2px;
+  transition: transform 0.3s;
+  position: relative;
+}
+
+.die.white { background: #f0f0f0; }
+.die.red { background: var(--red); }
+.die.blue { background: var(--blue); }
+.die.green { background: var(--green); }
+.die.yellow { background: var(--yellow); }
+
+.dot {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: transparent;
+}
+
+.die.white .dot.visible { background: #222; }
+.die:not(.white) .dot.visible { background: white; }
+
+.die.rolling {
+  animation: shake 0.4s ease-in-out;
+}
+
+@keyframes shake {
+  0%, 100% { transform: rotate(0deg); }
+  20% { transform: rotate(-15deg) scale(1.1); }
+  40% { transform: rotate(10deg) scale(0.95); }
+  60% { transform: rotate(-8deg) scale(1.05); }
+  80% { transform: rotate(5deg); }
+}
+
+.dice-hint {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-top: 6px;
+}
+
+.dice-sums {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+}
+
+.dice-sum-tag {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+/* Phase Instructions */
+.phase-bar {
+  text-align: center;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--card-bg);
+  font-size: 0.85rem;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+/* Scorecard */
+.scorecard {
+  background: var(--card-bg);
+  border-radius: 12px;
+  padding: 8px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.score-row {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-bottom: 4px;
+}
+
+.row-label {
+  width: 14px;
+  height: 28px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.55rem;
+  font-weight: 700;
+  color: white;
+}
+
+.cell {
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 600;
+  flex-shrink: 0;
+  cursor: pointer;
+  border: 1.5px solid transparent;
+  transition: all 0.15s;
+  position: relative;
+  user-select: none;
+}
+
+.cell.red-cell { background: rgba(231,76,60,0.15); color: var(--red); }
+.cell.blue-cell { background: rgba(52,152,219,0.15); color: var(--blue); }
+.cell.green-cell { background: rgba(46,204,113,0.15); color: var(--green); }
+.cell.yellow-cell { background: rgba(241,196,15,0.15); color: var(--yellow); }
+
+.cell.marked {
+  color: white !important;
+  font-weight: 800;
+}
+.cell.marked.red-cell { background: var(--red); }
+.cell.marked.blue-cell { background: var(--blue); }
+.cell.marked.green-cell { background: var(--green); }
+.cell.marked.yellow-cell { background: var(--yellow); }
+
+.cell.valid {
+  border-color: white;
+  animation: glow 1s ease-in-out infinite;
+}
+
+@keyframes glow {
+  0%, 100% { box-shadow: 0 0 4px rgba(255,255,255,0.3); }
+  50% { box-shadow: 0 0 10px rgba(255,255,255,0.6); }
+}
+
+.cell.disabled {
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+.cell.lock-cell {
+  font-size: 0.85rem;
+}
+
+.cell.locked-row {
+  opacity: 0.35;
+  pointer-events: none;
+  text-decoration: line-through;
+}
+
+.row-score {
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  background: rgba(255,255,255,0.08);
+}
+
+/* Legend */
+.legend {
+  background: var(--card-bg);
+  border-radius: 12px;
+  padding: 8px 10px;
+}
+
+.legend-title {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.legend-row {
+  display: flex;
+  gap: 2px;
+  font-size: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.legend-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 27px;
+}
+
+.legend-marks { color: var(--muted); }
+.legend-pts { font-weight: 700; }
+
+/* Penalties */
+.penalties-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+}
+
+.penalties-row span {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.penalty-box {
+  width: 32px;
+  height: 32px;
+  border: 2px solid #555;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.penalty-box.checked {
+  background: var(--red);
+  border-color: var(--red);
+  color: white;
+}
+
+/* Score Summary */
+.score-summary {
+  background: var(--card-bg);
+  border-radius: 12px;
+  padding: 10px;
+}
+
+.score-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr) auto auto;
+  gap: 4px;
+  font-size: 0.75rem;
+  text-align: center;
+}
+
+.score-summary-grid .header {
+  color: var(--muted);
+  font-size: 0.65rem;
+}
+
+.score-summary-grid .total {
+  font-weight: 800;
+  font-size: 1rem;
+  grid-column: 1 / -1;
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid #333;
+}
+
+/* Action Buttons */
+.actions {
+  display: flex;
+  gap: 8px;
+  padding-bottom: env(safe-area-inset-bottom, 8px);
+}
+
+.actions .btn { margin-top: 0; }
+
+/* Game Over Overlay */
+.game-over-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.85);
+  z-index: 100;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.game-over-overlay.visible {
+  display: flex;
+}
+
+.game-over-box {
+  background: var(--card-bg);
+  border-radius: 16px;
+  padding: 24px;
+  text-align: center;
+  max-width: 340px;
+  width: 100%;
+}
+
+.game-over-box h2 {
+  font-size: 1.5rem;
+  margin-bottom: 12px;
+}
+
+.game-over-box .final-score {
+  font-size: 2.5rem;
+  font-weight: 800;
+  margin: 12px 0;
+  background: linear-gradient(135deg, var(--yellow), var(--green));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Lock notification */
+.notification {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--card-bg);
+  border: 2px solid var(--yellow);
+  padding: 12px 20px;
+  border-radius: 12px;
+  z-index: 90;
+  font-weight: 600;
+  text-align: center;
+  animation: slideDown 0.3s ease-out;
+  max-width: 90%;
+}
+
+@keyframes slideDown {
+  from { transform: translateX(-50%) translateY(-100%); opacity: 0; }
+  to { transform: translateX(-50%) translateY(0); opacity: 1; }
+}
+
+/* Lock row modal */
+.lock-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  z-index: 80;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.lock-modal.visible { display: flex; }
+
+.lock-modal-box {
+  background: var(--card-bg);
+  border-radius: 12px;
+  padding: 20px;
+  text-align: center;
+  max-width: 300px;
+  width: 100%;
+}
+
+.lock-modal-box .btn { margin-top: 10px; }
+
+/* Responsive adjustments */
+@media (min-width: 400px) {
+  .cell { width: 30px; height: 30px; font-size: 0.75rem; }
+  .row-label { width: 16px; }
+  .die { width: 54px; height: 54px; padding: 8px; }
+}
+
+@media (min-width: 500px) {
+  .cell { width: 34px; height: 34px; }
+}
+</style>
+</head>
+<body>
+
+<!-- SETUP SCREEN -->
+<div id="setup-screen">
+  <h1>Colour Dice</h1>
+  <p class="subtitle">A multiplayer dice game</p>
+
+  <div class="setup-group" id="create-group">
+    <h2>Create Game</h2>
+    <label for="player-count">Number of Players</label>
+    <input type="number" id="player-count" min="2" max="8" value="2">
+    <button class="btn btn-primary" id="create-btn">Create Game</button>
+    <div id="seed-result" style="display:none;">
+      <label>Share this seed with other players:</label>
+      <div class="seed-display" id="seed-display"></div>
+      <label>You are Player 1</label>
+    </div>
+  </div>
+
+  <div style="color:var(--muted); font-size:0.85rem;">-- or --</div>
+
+  <div class="setup-group" id="join-group">
+    <h2>Join Game</h2>
+    <label for="join-seed">Game Seed</label>
+    <input type="text" id="join-seed" maxlength="6" placeholder="ABC123" style="text-transform:uppercase;">
+    <label for="join-count">Total Number of Players</label>
+    <input type="number" id="join-count" min="2" max="8" value="2">
+    <label for="join-player">Your Player Number</label>
+    <input type="number" id="join-player" min="1" max="8" value="2">
+    <button class="btn btn-secondary" id="join-btn">Join Game</button>
+  </div>
+
+  <div class="setup-group" id="resume-group" style="display:none;">
+    <h2>Resume Game</h2>
+    <p style="color:var(--muted);font-size:0.85rem;" id="resume-info"></p>
+    <button class="btn btn-success" id="resume-btn">Resume Previous Game</button>
+    <button class="btn btn-secondary" id="discard-btn">Discard &amp; Start Fresh</button>
+  </div>
+
+  <button class="btn btn-success" id="start-btn" disabled style="max-width:360px;">Start Game</button>
+</div>
+
+<!-- GAME SCREEN -->
+<div id="game-screen">
+  <div class="turn-banner" id="turn-banner">Turn 1</div>
+
+  <div class="dice-area" id="dice-area">
+    <div class="dice-container" id="dice-container"></div>
+    <div class="dice-hint" id="dice-hint">Tap or swipe up to roll</div>
+    <div class="dice-sums" id="dice-sums"></div>
+  </div>
+
+  <div class="phase-bar" id="phase-bar">Waiting...</div>
+
+  <div class="scorecard" id="scorecard"></div>
+
+  <div class="legend">
+    <div class="legend-title">Points per marks</div>
+    <div class="legend-row" id="legend-row"></div>
+  </div>
+
+  <div class="scorecard">
+    <div class="penalties-row" id="penalties-row">
+      <span>Penalties (-5 each):</span>
+    </div>
+  </div>
+
+  <div class="score-summary" id="score-summary"></div>
+
+  <div class="actions" id="actions"></div>
+</div>
+
+<!-- Game Over Overlay -->
+<div class="game-over-overlay" id="game-over-overlay">
+  <div class="game-over-box">
+    <h2>Game Over!</h2>
+    <div id="game-over-reason"></div>
+    <div class="final-score" id="final-score">0</div>
+    <div style="color:var(--muted);font-size:0.85rem;">Your Final Score</div>
+    <button class="btn btn-primary" onclick="location.reload();" style="margin-top:16px;">Play Again</button>
+  </div>
+</div>
+
+<!-- Lock Row Modal -->
+<div class="lock-modal" id="lock-modal">
+  <div class="lock-modal-box">
+    <p id="lock-modal-text">Another player locked a row! Select rows to lock:</p>
+    <div id="lock-modal-buttons"></div>
+    <button class="btn btn-secondary" onclick="closeLockModal()">Done</button>
+  </div>
+</div>
+
+<script>
+// ===== SEEDED PRNG (Mulberry32) =====
+function mulberry32(a) {
+  return function() {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+function hashSeed(seed) {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = ((hash << 5) - hash) + seed.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+}
+
+function generateSeed() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let s = '';
+  for (let i = 0; i < 6; i++) s += chars[Math.floor(Math.random() * chars.length)];
+  return s;
+}
+
+// ===== SCORING =====
+function getScore(marks) {
+  // Triangular: 1,3,6,10,15,21,28,36,45,55,66,78
+  return marks * (marks + 1) / 2;
+}
+
+// ===== GAME STATE =====
+const COLORS = ['red', 'blue', 'green', 'yellow'];
+const ROW_NUMBERS = {
+  red:    [12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2],
+  blue:   [12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2],
+  green:  [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+  yellow: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+};
+
+let game = {
+  seed: '',
+  playerCount: 2,
+  myPlayer: 1,
+  turnNumber: 0,
+  startingPlayer: 1,
+  phase: 'roll', // roll, white, color, done
+  isMyTurn: false,
+  diceRolled: false,
+  dice: { white1: 0, white2: 0, red: 0, blue: 0, green: 0, yellow: 0 },
+  whiteSum: 0,
+  colorCombos: [], // [{color, sum}]
+  usedWhite: false,
+  usedColor: false,
+  // Scorecard state
+  marked: { red: [], blue: [], green: [], yellow: [] },
+  rowLocked: { red: false, blue: false, green: false, yellow: false },
+  hasLockBonus: { red: false, blue: false, green: false, yellow: false },
+  penalties: 0,
+  gameOver: false,
+  lockedRowCount: 0, // track globally locked rows
+};
+
+// Undo stack — stores snapshots of turn-relevant state before each action
+let undoStack = [];
+
+function snapshotForUndo() {
+  return {
+    phase: game.phase,
+    usedWhite: game.usedWhite,
+    usedColor: game.usedColor,
+    marked: { red: [...game.marked.red], blue: [...game.marked.blue], green: [...game.marked.green], yellow: [...game.marked.yellow] },
+    rowLocked: { ...game.rowLocked },
+    hasLockBonus: { ...game.hasLockBonus },
+    penalties: game.penalties,
+    lockedRowCount: game.lockedRowCount,
+    gameOver: game.gameOver,
+  };
+}
+
+function pushUndo() {
+  undoStack.push(snapshotForUndo());
+}
+
+function doUndo() {
+  if (undoStack.length === 0) return;
+  const snap = undoStack.pop();
+  game.phase = snap.phase;
+  game.usedWhite = snap.usedWhite;
+  game.usedColor = snap.usedColor;
+  game.marked = snap.marked;
+  game.rowLocked = snap.rowLocked;
+  game.hasLockBonus = snap.hasLockBonus;
+  game.penalties = snap.penalties;
+  game.lockedRowCount = snap.lockedRowCount;
+  game.gameOver = snap.gameOver;
+  // Hide game over overlay if we undo back from it
+  document.getElementById('game-over-overlay').classList.remove('visible');
+  renderAll();
+}
+
+// ===== DICE ROLLING =====
+function rollDiceForTurn(seed, turn) {
+  const rng = mulberry32(hashSeed(seed) + turn * 7919);
+  return {
+    white1: Math.floor(rng() * 6) + 1,
+    white2: Math.floor(rng() * 6) + 1,
+    red:    Math.floor(rng() * 6) + 1,
+    blue:   Math.floor(rng() * 6) + 1,
+    green:  Math.floor(rng() * 6) + 1,
+    yellow: Math.floor(rng() * 6) + 1,
+  };
+}
+
+function getStartingPlayer(seed, count) {
+  const rng = mulberry32(hashSeed(seed));
+  return Math.floor(rng() * count) + 1;
+}
+
+function getCurrentPlayer() {
+  return ((game.startingPlayer - 1 + game.turnNumber) % game.playerCount) + 1;
+}
+
+// ===== UI RENDERING =====
+function renderDice() {
+  const container = document.getElementById('dice-container');
+  const diceOrder = [
+    { key: 'white1', cls: 'white', label: 'W1' },
+    { key: 'white2', cls: 'white', label: 'W2' },
+    { key: 'red', cls: 'red', label: 'R' },
+    { key: 'blue', cls: 'blue', label: 'B' },
+    { key: 'green', cls: 'green', label: 'G' },
+    { key: 'yellow', cls: 'yellow', label: 'Y' },
+  ];
+
+  container.innerHTML = diceOrder.map(d => {
+    const val = game.diceRolled ? game.dice[d.key] : 0;
+    return `<div class="die ${d.cls} ${game.diceRolled ? '' : ''}" data-key="${d.key}">
+      ${getDieDots(val)}
+    </div>`;
+  }).join('');
+}
+
+function getDieDots(val) {
+  // 3x3 grid positions: tl, tm, tr, ml, mm, mr, bl, bm, br
+  const patterns = {
+    0: [],
+    1: [4],
+    2: [2, 6],
+    3: [2, 4, 6],
+    4: [0, 2, 6, 8],
+    5: [0, 2, 4, 6, 8],
+    6: [0, 2, 3, 5, 6, 8],
+  };
+  const active = patterns[val] || [];
+  let html = '';
+  for (let i = 0; i < 9; i++) {
+    html += `<div class="dot ${active.includes(i) ? 'visible' : ''}"></div>`;
+  }
+  return html;
+}
+
+function renderDiceSums() {
+  const el = document.getElementById('dice-sums');
+  document.getElementById('dice-hint').textContent = game.diceRolled ? '' : (game.phase === 'roll' ? 'Tap or swipe up to roll' : '');
+  if (!game.diceRolled) { el.innerHTML = ''; return; }
+
+  const d = game.dice;
+  const ws = d.white1 + d.white2;
+  let html = `<span class="dice-sum-tag" style="background:rgba(255,255,255,0.15);">White: ${ws}</span>`;
+
+  if (game.isMyTurn) {
+    const combos = getColorCombos();
+    combos.forEach(c => {
+      const bg = `var(--${c.color})`;
+      html += `<span class="dice-sum-tag" style="background:${bg};color:white;">W+${c.color[0].toUpperCase()}: ${c.sum}</span>`;
+    });
+  }
+  el.innerHTML = html;
+}
+
+function getColorCombos() {
+  const d = game.dice;
+  const combos = [];
+  const seen = new Set();
+  for (const color of COLORS) {
+    if (game.rowLocked[color]) continue;
+    for (const w of [d.white1, d.white2]) {
+      const sum = w + d[color];
+      const key = `${color}-${sum}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        combos.push({ color, sum });
+      }
+    }
+  }
+  return combos;
+}
+
+function renderScorecard() {
+  const el = document.getElementById('scorecard');
+  let html = '';
+
+  for (const color of COLORS) {
+    const nums = ROW_NUMBERS[color];
+    const isLocked = game.rowLocked[color];
+    const marks = game.marked[color];
+    const markCount = marks.length + (game.hasLockBonus[color] ? 1 : 0);
+
+    html += `<div class="score-row">`;
+    html += `<div class="row-label" style="background:var(--${color});">${color[0].toUpperCase()}</div>`;
+
+    for (let i = 0; i < nums.length; i++) {
+      const num = nums[i];
+      const isMarked = marks.includes(num);
+      const isValid = !isLocked && isValidMark(color, num);
+      const isDisabled = isLocked || (!isMarked && !isValid);
+      const isLastCell = i === nums.length - 1;
+
+      let cls = `cell ${color}-cell`;
+      if (isMarked) cls += ' marked';
+      if (isValid && !isMarked) cls += ' valid';
+      if (isDisabled && !isMarked) cls += ' disabled';
+      if (isLocked && !isMarked) cls += ' locked-row';
+
+      html += `<div class="${cls}" data-color="${color}" data-num="${num}" data-index="${i}">${isMarked ? 'X' : num}</div>`;
+    }
+
+    // Lock cell
+    const lockMarked = game.hasLockBonus[color];
+    let lockCls = `cell ${color}-cell lock-cell`;
+    if (lockMarked) lockCls += ' marked';
+    if (isLocked && !lockMarked) lockCls += ' locked-row';
+    html += `<div class="${lockCls}" data-color="${color}" data-action="lock">${lockMarked ? 'X' : '🔒'}</div>`;
+
+    // Row score
+    html += `<div class="row-score">${getScore(markCount)}</div>`;
+    html += `</div>`;
+  }
+
+  el.innerHTML = html;
+
+  // Add click handlers
+  el.querySelectorAll('.cell[data-num]').forEach(cell => {
+    cell.addEventListener('click', () => handleCellClick(cell.dataset.color, parseInt(cell.dataset.num)));
+  });
+}
+
+function renderLegend() {
+  const el = document.getElementById('legend-row');
+  let html = '';
+  for (let i = 1; i <= 12; i++) {
+    html += `<div class="legend-item"><span class="legend-marks">${i}x</span><span class="legend-pts">${getScore(i)}</span></div>`;
+  }
+  el.innerHTML = html;
+}
+
+function renderPenalties() {
+  const el = document.getElementById('penalties-row');
+  let html = '<span>Penalties (-5 each):</span>';
+  for (let i = 0; i < 4; i++) {
+    const checked = i < game.penalties;
+    html += `<div class="penalty-box ${checked ? 'checked' : ''}" data-index="${i}">${checked ? 'X' : ''}</div>`;
+  }
+  el.innerHTML = html;
+}
+
+function renderScoreSummary() {
+  const el = document.getElementById('score-summary');
+  let totalScore = 0;
+  let html = '<div class="score-summary-grid">';
+  html += '<div class="header">Red</div><div class="header">Blue</div><div class="header">Green</div><div class="header">Yellow</div><div class="header">Pen.</div><div class="header">Total</div>';
+
+  const scores = {};
+  for (const color of COLORS) {
+    const mc = game.marked[color].length + (game.hasLockBonus[color] ? 1 : 0);
+    scores[color] = getScore(mc);
+    totalScore += scores[color];
+  }
+
+  const penaltyScore = game.penalties * 5;
+  totalScore -= penaltyScore;
+
+  for (const color of COLORS) {
+    html += `<div style="color:var(--${color});font-weight:700;">${scores[color]}</div>`;
+  }
+  html += `<div style="color:var(--red);font-weight:700;">-${penaltyScore}</div>`;
+  html += `<div style="font-weight:700;">${totalScore}</div>`;
+  html += `<div class="total">Total Score: ${totalScore}</div>`;
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+function renderActions() {
+  const el = document.getElementById('actions');
+  let html = '';
+
+  switch (game.phase) {
+    case 'roll':
+      // Roll button shown in dice area
+      html = '';
+      break;
+    case 'white':
+      html += `<button class="btn btn-secondary" onclick="skipWhite()">Skip White</button>`;
+      break;
+    case 'color':
+      html += `<button class="btn btn-secondary" onclick="skipColor()">Skip Colored</button>`;
+      break;
+    case 'done':
+      html += `<button class="btn btn-primary" onclick="nextTurn()">Next Turn</button>`;
+      if (!game.isMyTurn && game.phase === 'done' && !game.usedWhite) {
+        // They already had the option
+      }
+      break;
+  }
+
+  // Undo button (only when there are actions to undo within this turn)
+  if (undoStack.length > 0) {
+    html += `<button class="btn btn-secondary" onclick="doUndo()" style="flex:0 0 auto;width:auto;padding:12px 16px;">Undo</button>`;
+  }
+
+  // Manual lock button
+  html += `<button class="btn btn-danger" onclick="openLockModal()" style="flex:0 0 auto;width:auto;padding:12px 16px;">Lock Row</button>`;
+
+  el.innerHTML = html;
+}
+
+function renderTurnBanner() {
+  const el = document.getElementById('turn-banner');
+  const cp = getCurrentPlayer();
+  game.isMyTurn = (cp === game.myPlayer);
+
+  if (game.isMyTurn) {
+    el.textContent = `Turn ${game.turnNumber + 1} — YOUR TURN (Player ${game.myPlayer})`;
+    el.className = 'turn-banner my-turn';
+  } else {
+    el.textContent = `Turn ${game.turnNumber + 1} — Player ${cp}'s turn`;
+    el.className = 'turn-banner';
+  }
+}
+
+function renderPhaseBar() {
+  const el = document.getElementById('phase-bar');
+
+  switch (game.phase) {
+    case 'roll':
+      el.textContent = game.isMyTurn ? 'Tap or swipe the dice to roll!' : 'Tap dice to reveal roll';
+      break;
+    case 'white':
+      el.textContent = `White sum: ${game.whiteSum} — Tap a matching cell in any row`;
+      break;
+    case 'color':
+      if (game.isMyTurn) {
+        el.textContent = 'Pick a white + colored combo — Tap a valid cell';
+      }
+      break;
+    case 'done':
+      el.textContent = 'Turn complete — tap Next Turn';
+      break;
+  }
+}
+
+function renderAll() {
+  renderTurnBanner();
+  renderDice();
+  renderDiceSums();
+  renderPhaseBar();
+  renderScorecard();
+  renderPenalties();
+  renderScoreSummary();
+  renderActions();
+}
+
+// ===== GAME LOGIC =====
+function isValidMark(color, num) {
+  if (game.rowLocked[color]) return false;
+  if (game.marked[color].includes(num)) return false;
+
+  const nums = ROW_NUMBERS[color];
+  const idx = nums.indexOf(num);
+  const isLastCell = idx === nums.length - 1;
+
+  // If it's the last cell, need 5+ marks
+  if (isLastCell && game.marked[color].length < 5) return false;
+
+  // Must be to the right of all existing marks
+  const markedIndices = game.marked[color].map(n => nums.indexOf(n));
+  const rightmostMark = markedIndices.length > 0 ? Math.max(...markedIndices) : -1;
+
+  if (idx <= rightmostMark) return false;
+
+  // Check if this number matches current valid sums
+  if (!game.diceRolled) return false;
+
+  const validNums = getValidNumbersForColor(color);
+  return validNums.includes(num);
+}
+
+function getValidNumbersForColor(color) {
+  if (!game.diceRolled) return [];
+
+  const validNums = new Set();
+
+  if (game.phase === 'white') {
+    validNums.add(game.dice.white1 + game.dice.white2);
+  }
+
+  if (game.phase === 'color' && game.isMyTurn) {
+    const combos = getColorCombos();
+    combos.filter(c => c.color === color).forEach(c => validNums.add(c.sum));
+  }
+
+  return [...validNums];
+}
+
+function handleCellClick(color, num) {
+  if (game.gameOver) return;
+  if (game.rowLocked[color]) return;
+  if (!game.diceRolled) return;
+  if (game.marked[color].includes(num)) return;
+
+  const nums = ROW_NUMBERS[color];
+  const idx = nums.indexOf(num);
+  const isLastCell = idx === nums.length - 1;
+
+  // Check rightmost constraint
+  const markedIndices = game.marked[color].map(n => nums.indexOf(n));
+  const rightmostMark = markedIndices.length > 0 ? Math.max(...markedIndices) : -1;
+  if (idx <= rightmostMark) return;
+
+  // Check last cell requirement
+  if (isLastCell && game.marked[color].length < 5) return;
+
+  if (game.phase === 'white') {
+    const ws = game.dice.white1 + game.dice.white2;
+    if (num !== ws) return;
+
+    pushUndo();
+    game.marked[color].push(num);
+    game.usedWhite = true;
+
+    // Check if marking the last cell locks the row
+    if (isLastCell) {
+      lockRow(color, true);
+    }
+
+    if (game.isMyTurn) {
+      game.phase = 'color';
+    } else {
+      game.phase = 'done';
+    }
+    renderAll();
+    return;
+  }
+
+  if (game.phase === 'color' && game.isMyTurn) {
+    const combos = getColorCombos();
+    const matchingCombo = combos.find(c => c.color === color && c.sum === num);
+    if (!matchingCombo) return;
+
+    pushUndo();
+    game.marked[color].push(num);
+    game.usedColor = true;
+
+    if (isLastCell) {
+      lockRow(color, true);
+    }
+
+    game.phase = 'done';
+    if (!game.usedWhite && !game.usedColor) {
+      // Should not reach here
+    }
+    renderAll();
+    return;
+  }
+}
+
+function lockRow(color, myLock) {
+  game.rowLocked[color] = true;
+  if (myLock) {
+    game.hasLockBonus[color] = true;
+    showNotification(`You locked the ${color.toUpperCase()} row! (+1 bonus mark)`);
+    announceText(`${color} row locked!`);
+  }
+  game.lockedRowCount = COLORS.filter(c => game.rowLocked[c]).length;
+  checkGameEnd();
+}
+
+function skipWhite() {
+  pushUndo();
+  if (game.isMyTurn) {
+    game.phase = 'color';
+  } else {
+    game.phase = 'done';
+  }
+  renderAll();
+}
+
+function skipColor() {
+  pushUndo();
+  if (!game.usedWhite && !game.usedColor && game.isMyTurn) {
+    // Active player skipped both - penalty
+    game.penalties++;
+    showNotification('No moves made - penalty!');
+    if (game.penalties >= 4) {
+      checkGameEnd();
+    }
+  }
+  game.phase = 'done';
+  renderAll();
+}
+
+function nextTurn() {
+  undoStack = [];
+  game.turnNumber++;
+  game.phase = 'roll';
+  game.diceRolled = false;
+  game.usedWhite = false;
+  game.usedColor = false;
+  game.dice = { white1: 0, white2: 0, red: 0, blue: 0, green: 0, yellow: 0 };
+  game.whiteSum = 0;
+  game.colorCombos = [];
+  renderAll();
+
+  // Announce whose turn it is
+  const cp = getCurrentPlayer();
+  if (cp === game.myPlayer) {
+    announceText('Your turn!');
+  } else {
+    announceText(`Player ${cp}'s turn`);
+  }
+}
+
+function doRoll() {
+  if (game.diceRolled || game.gameOver) return;
+
+  // Animate
+  const dice = document.querySelectorAll('.die');
+  dice.forEach(d => d.classList.add('rolling'));
+
+  setTimeout(() => {
+    game.dice = rollDiceForTurn(game.seed, game.turnNumber);
+    game.diceRolled = true;
+    game.whiteSum = game.dice.white1 + game.dice.white2;
+    game.colorCombos = getColorCombos();
+    game.phase = 'white';
+
+    dice.forEach(d => d.classList.remove('rolling'));
+    renderAll();
+  }, 450);
+}
+
+function checkGameEnd() {
+  let reason = '';
+
+  if (game.penalties >= 4) {
+    reason = 'You used all 4 penalties!';
+  }
+
+  if (game.lockedRowCount >= 2) {
+    reason = '2 rows have been locked!';
+  }
+
+  if (reason) {
+    game.gameOver = true;
+    game.phase = 'done';
+
+    let total = 0;
+    for (const color of COLORS) {
+      const mc = game.marked[color].length + (game.hasLockBonus[color] ? 1 : 0);
+      total += getScore(mc);
+    }
+    total -= game.penalties * 5;
+
+    document.getElementById('game-over-reason').textContent = reason;
+    document.getElementById('final-score').textContent = total;
+    document.getElementById('game-over-overlay').classList.add('visible');
+    announceText(`Game over! Your score is ${total} points.`);
+  }
+}
+
+// ===== NOTIFICATIONS =====
+function showNotification(text) {
+  const existing = document.querySelector('.notification');
+  if (existing) existing.remove();
+
+  const el = document.createElement('div');
+  el.className = 'notification';
+  el.textContent = text;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+// ===== SPEECH =====
+function announceText(text) {
+  if ('speechSynthesis' in window) {
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.1;
+    u.pitch = 1;
+    speechSynthesis.speak(u);
+  }
+}
+
+// ===== LOCK MODAL =====
+function openLockModal() {
+  const modal = document.getElementById('lock-modal');
+  const btns = document.getElementById('lock-modal-buttons');
+  let html = '';
+  for (const color of COLORS) {
+    if (!game.rowLocked[color]) {
+      html += `<button class="btn btn-danger" onclick="externalLockRow('${color}')" style="margin-top:8px;">Lock ${color.toUpperCase()} Row</button>`;
+    }
+  }
+  if (!html) {
+    html = '<p style="color:var(--muted);margin:10px 0;">All rows are already locked.</p>';
+  }
+  btns.innerHTML = html;
+  modal.classList.add('visible');
+}
+
+function closeLockModal() {
+  document.getElementById('lock-modal').classList.remove('visible');
+}
+
+function externalLockRow(color) {
+  lockRow(color, false);
+  closeLockModal();
+  renderAll();
+}
+
+// ===== SETUP LOGIC =====
+document.getElementById('create-btn').addEventListener('click', () => {
+  const count = parseInt(document.getElementById('player-count').value);
+  if (count < 2 || count > 8) return;
+
+  game.playerCount = count;
+  game.myPlayer = 1;
+  game.seed = generateSeed();
+
+  document.getElementById('seed-display').textContent = game.seed;
+  document.getElementById('seed-result').style.display = 'block';
+  document.getElementById('create-btn').disabled = true;
+  document.getElementById('join-group').style.display = 'none';
+  document.getElementById('start-btn').disabled = false;
+});
+
+document.getElementById('join-btn').addEventListener('click', () => {
+  const seed = document.getElementById('join-seed').value.trim().toUpperCase();
+  const count = parseInt(document.getElementById('join-count').value);
+  const player = parseInt(document.getElementById('join-player').value);
+
+  if (seed.length !== 6) { alert('Seed must be 6 characters'); return; }
+  if (count < 2 || count > 8) { alert('Number of players must be 2-8'); return; }
+  if (player < 1 || player > count) { alert(`Player number must be 1-${count}`); return; }
+
+  game.seed = seed;
+  game.playerCount = count;
+  game.myPlayer = player;
+
+  document.getElementById('join-btn').disabled = true;
+  document.getElementById('join-btn').textContent = `Joined as Player ${player} of ${count}`;
+  document.getElementById('create-group').style.display = 'none';
+  document.getElementById('start-btn').disabled = false;
+});
+
+document.getElementById('start-btn').addEventListener('click', () => {
+  game.startingPlayer = getStartingPlayer(game.seed, game.playerCount);
+  game.turnNumber = 0;
+  game.phase = 'roll';
+
+  document.getElementById('setup-screen').style.display = 'none';
+  document.getElementById('game-screen').style.display = 'flex';
+
+  renderLegend();
+  renderAll();
+
+  const cp = getCurrentPlayer();
+  if (cp === game.myPlayer) {
+    announceText('You go first!');
+  } else {
+    announceText(`Player ${cp} goes first`);
+  }
+});
+
+// ===== DICE INTERACTION (tap & swipe) =====
+const diceArea = document.getElementById('dice-area');
+let touchStartY = 0;
+
+let touchHandled = false;
+
+diceArea.addEventListener('touchstart', e => {
+  touchStartY = e.touches[0].clientY;
+  touchHandled = false;
+}, { passive: true });
+
+diceArea.addEventListener('touchend', e => {
+  touchHandled = true;
+  if (game.phase === 'roll') doRoll();
+}, { passive: true });
+
+diceArea.addEventListener('click', () => {
+  // Avoid double-fire on touch devices
+  if (!touchHandled && game.phase === 'roll') doRoll();
+  touchHandled = false;
+});
+
+// ===== SAVE/LOAD STATE =====
+function saveState() {
+  try {
+    localStorage.setItem('colourdice_state', JSON.stringify(game));
+  } catch (e) {}
+}
+
+function loadState() {
+  try {
+    const s = localStorage.getItem('colourdice_state');
+    if (s) {
+      const saved = JSON.parse(s);
+      if (saved.seed) {
+        // Show resume UI instead of blocking confirm()
+        const resumeGroup = document.getElementById('resume-group');
+        document.getElementById('resume-info').textContent = `Seed: ${saved.seed} | Player ${saved.myPlayer} of ${saved.playerCount} | Turn ${(saved.turnNumber || 0) + 1}`;
+        resumeGroup.style.display = 'block';
+
+        document.getElementById('resume-btn').addEventListener('click', () => {
+          Object.assign(game, saved);
+          document.getElementById('setup-screen').style.display = 'none';
+          document.getElementById('game-screen').style.display = 'flex';
+          renderLegend();
+          renderAll();
+        });
+
+        document.getElementById('discard-btn').addEventListener('click', () => {
+          localStorage.removeItem('colourdice_state');
+          resumeGroup.style.display = 'none';
+        });
+      }
+    }
+  } catch (e) {}
+}
+
+window.addEventListener('beforeunload', saveState);
+setInterval(saveState, 5000);
+loadState();
+</script>
+</body>
+</html>
