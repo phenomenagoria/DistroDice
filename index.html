@@ -712,7 +712,7 @@ html, body {
 <!-- SETUP SCREEN -->
 <div id="setup-screen">
   <h1>DistroDice</h1>
-  <p class="subtitle">v2.1.1 — A multiplayer dice game</p>
+  <p class="subtitle">v2.1.2 — A multiplayer dice game</p>
 
   <div class="setup-group" id="create-group">
     <h2>Create Game</h2>
@@ -1741,7 +1741,15 @@ function announceNewTurn() {
 }
 
 // ===== GAME LOGIC =====
+function isDiceChoiceOpen() {
+  return document.getElementById('dice-choice').classList.contains('visible');
+}
+
 function handleCellClick(color, num) {
+  if (isDiceChoiceOpen()) {
+    showNotification('Pick your dice first!');
+    return;
+  }
   if (game.gameOver || game.phase !== 'mark') return;
   if (game.rowLocked[color]) return;
   if (game.marked[color].includes(num)) return;
@@ -1780,6 +1788,10 @@ function handleCellClick(color, num) {
 }
 
 function finishMarking() {
+  if (isDiceChoiceOpen()) {
+    showNotification('Pick your dice first!');
+    return;
+  }
   if (game.gameOver) return;
 
   // If game over is pending (from host), finalize now
