@@ -923,11 +923,11 @@ function updateConnStatus(status) {
   const el = document.getElementById('conn-status');
   switch (status) {
     case 'host':
-      el.textContent = `Hosting — ${connections.length} player(s) connected`;
+      el.textContent = `Hosting [${game.seed}] — ${connections.length} player(s) connected`;
       el.className = 'conn-status connected';
       break;
     case 'connected':
-      el.textContent = 'Connected to host';
+      el.textContent = `Connected to host [${game.seed}]`;
       el.className = 'conn-status connected';
       break;
     case 'disconnected':
