@@ -1542,6 +1542,9 @@ function finishMarking() {
     renderPenalties();
   }
 
+  // Broadcast any row locks now that the player has committed
+  broadcastPendingLocks();
+
   // Send ready signal
   if (peerConnected) {
     const msg = { type: 'ready', player: game.myPlayer, name: game.playerName };
@@ -1618,16 +1621,24 @@ function resetTurnState() {
 
 function lockRow(color, myLock) {
   // Row locks are deferred — they apply at the start of the next turn
+  // No broadcast here; broadcast happens in finishMarking after player confirms
   if (!game.pendingLocks.includes(color)) {
     game.pendingLocks.push(color);
   }
   if (myLock) {
     game.hasLockBonus[color] = true;
-    showNotification(`You locked the ${color.toUpperCase()} row! (+1 bonus mark, locks next turn)`);
-    // Broadcast pending lock to other players
-    const msg = { type: 'lock', color: color, player: game.myPlayer, name: game.playerName };
-    if (isHost) broadcast(msg);
-    else sendToHost(msg);
+  }
+}
+
+function broadcastPendingLocks() {
+  // Called from finishMarking — only broadcast locks once the player commits
+  for (const color of game.pendingLocks) {
+    if (game.hasLockBonus[color]) {
+      showNotification(`You locked the ${color.toUpperCase()} row! (+1 bonus mark, locks next turn)`);
+      const msg = { type: 'lock', color: color, player: game.myPlayer, name: game.playerName };
+      if (isHost) broadcast(msg);
+      else sendToHost(msg);
+    }
   }
 }
 
