@@ -351,6 +351,42 @@ html, body {
 .dice-choice-btn.white-choice { background: #f0f0f0; color: #222; }
 .dice-choice-btn.color-choice { color: white; }
 
+/* Scorecard Viewer */
+.scorecard-viewer {
+  position: relative;
+}
+
+.scorecard-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 6px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 2px 0;
+}
+
+.scorecard-tab {
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  border: 2px solid transparent;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.scorecard-tab.active {
+  border-color: white;
+  transform: scale(1.05);
+}
+
+.scorecard-tab.is-me {
+  background: var(--card-bg);
+  color: var(--text);
+}
+
 /* Scorecard */
 .scorecard {
   background: var(--card-bg);
@@ -358,6 +394,13 @@ html, body {
   padding: 8px;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+  transition: background 0.3s, border-color 0.3s;
+  border: 2px solid transparent;
+}
+
+.scorecard.other-player {
+  border-width: 2px;
+  border-style: solid;
 }
 
 .score-row {
@@ -729,7 +772,10 @@ html, body {
     <button class="dice-choice-btn color-choice" id="dice-choice-color">Colour</button>
   </div>
 
-  <div class="scorecard" id="scorecard"></div>
+  <div class="scorecard-viewer" id="scorecard-viewer">
+    <div class="scorecard-tabs" id="scorecard-tabs"></div>
+    <div class="scorecard" id="scorecard"></div>
+  </div>
 
   <div class="legend">
     <div class="legend-title">Points per marks</div>
@@ -836,10 +882,33 @@ let game = {
   lockedRowCount: 0,
 };
 
+// Disco colors for up to 10 players (player backgrounds)
+const DISCO_COLORS = [
+  { bg: 'rgba(22,33,62,0.95)',  border: '#555',     label: '#ccc'    },  // 1: self (neutral)
+  { bg: 'rgba(255,0,128,0.12)', border: '#ff0080',  label: '#ff0080' },  // 2: hot pink
+  { bg: 'rgba(0,255,200,0.12)', border: '#00ffc8',  label: '#00ffc8' },  // 3: cyan-mint
+  { bg: 'rgba(160,0,255,0.12)', border: '#a000ff',  label: '#a000ff' },  // 4: purple
+  { bg: 'rgba(255,165,0,0.12)', border: '#ffa500',  label: '#ffa500' },  // 5: orange
+  { bg: 'rgba(0,200,255,0.12)', border: '#00c8ff',  label: '#00c8ff' },  // 6: electric blue
+  { bg: 'rgba(255,255,0,0.12)', border: '#ffff00',  label: '#cccc00' },  // 7: yellow
+  { bg: 'rgba(255,50,50,0.12)', border: '#ff3232',  label: '#ff3232' },  // 8: red
+  { bg: 'rgba(0,255,100,0.12)', border: '#00ff64',  label: '#00ff64' },  // 9: lime
+  { bg: 'rgba(255,0,255,0.12)', border: '#ff00ff',  label: '#ff00ff' },  // 10: magenta
+];
+
+function getDiscoColor(playerNum) {
+  if (playerNum === game.myPlayer) return DISCO_COLORS[0];
+  // Assign disco colors in order, skipping index 0 (self)
+  let idx = playerNum <= game.myPlayer ? playerNum : playerNum - 1;
+  return DISCO_COLORS[Math.min(idx, DISCO_COLORS.length - 1)];
+}
+
 // Networked state tracking
 let playerNames = {};     // { playerNumber: name }
 let playerPenalties = {}; // { playerNumber: count } — host tracks
 let playerScores = {};    // { playerNumber: { name, score } } — for leaderboard
+let allPlayerCards = {};   // { playerNumber: { marked, hasLockBonus, penalties } }
+let viewingPlayer = 0;     // 0 = viewing own scorecard, else player number
 let gameOverShown = false;
 let pendingGameOver = null;   // reason string when game-over is pending revision
 let preFinishSnapshot = null; // snapshot saved before finishMarking, for undo-done
@@ -1054,6 +1123,25 @@ function handlePeerMessage(data, fromConn) {
       renderAll();
       autoRollIfNeeded();
       announceNewTurn();
+      break;
+
+    case 'marks':
+      // Another player's scorecard state
+      allPlayerCards[data.player] = {
+        marked: data.marked,
+        hasLockBonus: data.hasLockBonus,
+        penalties: data.penalties,
+      };
+      if (isHost && fromConn) {
+        // Relay to other clients
+        connections.forEach(c => {
+          if (c !== fromConn) {
+            try { c.send(data); } catch (e) {}
+          }
+        });
+      }
+      renderScorecardTabs();
+      if (viewingPlayer === data.player) renderScorecard();
       break;
 
     case 'lock':
@@ -1343,25 +1431,93 @@ function renderDiceSums() {
   el.innerHTML = html;
 }
 
+function renderScorecardTabs() {
+  const tabsEl = document.getElementById('scorecard-tabs');
+  if (game.playerCount <= 1 && Object.keys(allPlayerCards).length === 0) {
+    tabsEl.innerHTML = '';
+    return;
+  }
+
+  let html = '';
+  // Own tab
+  const myDisco = getDiscoColor(game.myPlayer);
+  const myActive = (viewingPlayer === 0 || viewingPlayer === game.myPlayer) ? ' active' : '';
+  const myName = game.playerName || `Player ${game.myPlayer}`;
+  html += `<div class="scorecard-tab is-me${myActive}" onclick="switchScorecard(0)" style="border-color:${myActive ? 'white' : 'transparent'};">You (${myName})</div>`;
+
+  // Other players
+  for (let p = 1; p <= game.playerCount; p++) {
+    if (p === game.myPlayer) continue;
+    const disco = getDiscoColor(p);
+    const name = playerNames[p] || `Player ${p}`;
+    const hasData = !!allPlayerCards[p];
+    const active = viewingPlayer === p ? ' active' : '';
+    const opacity = hasData ? '1' : '0.4';
+    html += `<div class="scorecard-tab${active}" onclick="switchScorecard(${p})" style="background:${disco.bg};border-color:${active ? disco.border : 'transparent'};color:${disco.label};opacity:${opacity};">${name}</div>`;
+  }
+
+  tabsEl.innerHTML = html;
+}
+
+function switchScorecard(playerNum) {
+  viewingPlayer = playerNum;
+  renderScorecardTabs();
+  renderScorecard();
+  renderPenalties();
+  renderScoreSummary();
+}
+
 function renderScorecard() {
   const el = document.getElementById('scorecard');
+  const isViewingSelf = (viewingPlayer === 0 || viewingPlayer === game.myPlayer);
+
+  // Get the data source
+  let marks, hasLockBonus, penalties;
+  if (isViewingSelf) {
+    marks = game.marked;
+    hasLockBonus = game.hasLockBonus;
+    penalties = game.penalties;
+  } else {
+    const card = allPlayerCards[viewingPlayer];
+    if (!card) {
+      el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:20px;font-size:0.85rem;">Waiting for this player\'s scorecard...</div>';
+      el.className = 'scorecard';
+      el.style.cssText = '';
+      return;
+    }
+    marks = card.marked;
+    hasLockBonus = card.hasLockBonus;
+    penalties = card.penalties;
+  }
+
+  // Style the scorecard background
+  if (!isViewingSelf) {
+    const disco = getDiscoColor(viewingPlayer);
+    el.className = 'scorecard other-player';
+    el.style.background = disco.bg;
+    el.style.borderColor = disco.border;
+  } else {
+    el.className = 'scorecard';
+    el.style.cssText = '';
+  }
+
   let html = '';
 
   for (const color of COLORS) {
     const nums = ROW_NUMBERS[color];
     const isLocked = game.rowLocked[color];
-    const marks = game.marked[color];
-    const markCount = marks.length + (game.hasLockBonus[color] ? 1 : 0);
+    const colorMarks = marks[color] || [];
+    const markCount = colorMarks.length + (hasLockBonus[color] ? 1 : 0);
 
     html += `<div class="score-row">`;
     html += `<div class="row-label" style="background:var(--${color});">${color[0].toUpperCase()}</div>`;
 
     for (let i = 0; i < nums.length; i++) {
       const num = nums[i];
-      const isMarked = marks.includes(num);
+      const isMarked = colorMarks.includes(num);
 
       if (isMarked) {
-        html += `<div class="cell ${color}-cell marked"  data-color="${color}" data-num="${num}">X</div>`;
+        html += `<div class="cell ${color}-cell marked">${isViewingSelf ? 'X' : '\u2022'}</div>`;
         continue;
       }
 
@@ -1370,19 +1526,21 @@ function renderScorecard() {
         continue;
       }
 
-      const v = getCellValidity(color, num);
-      let cls = `cell ${color}-cell`;
-
-      if (v.white && v.color) cls += ' valid-both';
-      else if (v.white) cls += ' valid-white';
-      else if (v.color) cls += ' valid-color';
-      else cls += ' disabled';
-
-      html += `<div class="${cls}" data-color="${color}" data-num="${num}">${num}</div>`;
+      if (isViewingSelf) {
+        const v = getCellValidity(color, num);
+        let cls = `cell ${color}-cell`;
+        if (v.white && v.color) cls += ' valid-both';
+        else if (v.white) cls += ' valid-white';
+        else if (v.color) cls += ' valid-color';
+        else cls += ' disabled';
+        html += `<div class="${cls}" data-color="${color}" data-num="${num}">${num}</div>`;
+      } else {
+        html += `<div class="cell ${color}-cell disabled">${num}</div>`;
+      }
     }
 
     // Lock cell
-    const lockMarked = game.hasLockBonus[color];
+    const lockMarked = hasLockBonus[color];
     let lockCls = `cell ${color}-cell lock-cell`;
     if (lockMarked) lockCls += ' marked';
     else if (isLocked) lockCls += ' locked-row';
@@ -1394,10 +1552,12 @@ function renderScorecard() {
 
   el.innerHTML = html;
 
-  // Click handlers for valid cells
-  el.querySelectorAll('.cell[data-num]').forEach(cell => {
-    cell.addEventListener('click', () => handleCellClick(cell.dataset.color, parseInt(cell.dataset.num)));
-  });
+  // Click handlers only for own scorecard
+  if (isViewingSelf) {
+    el.querySelectorAll('.cell[data-num]').forEach(cell => {
+      cell.addEventListener('click', () => handleCellClick(cell.dataset.color, parseInt(cell.dataset.num)));
+    });
+  }
 }
 
 function renderLegend() {
@@ -1409,11 +1569,23 @@ function renderLegend() {
   el.innerHTML = html;
 }
 
+function getViewingData() {
+  const isViewingSelf = (viewingPlayer === 0 || viewingPlayer === game.myPlayer);
+  if (isViewingSelf) {
+    return { marks: game.marked, hasLockBonus: game.hasLockBonus, penalties: game.penalties, isSelf: true };
+  }
+  const card = allPlayerCards[viewingPlayer];
+  if (!card) return null;
+  return { marks: card.marked, hasLockBonus: card.hasLockBonus, penalties: card.penalties, isSelf: false };
+}
+
 function renderPenalties() {
   const el = document.getElementById('penalties-row');
+  const data = getViewingData();
+  const pen = data ? data.penalties : game.penalties;
   let html = '<span>Penalties (-5 each):</span>';
   for (let i = 0; i < 4; i++) {
-    const checked = i < game.penalties;
+    const checked = i < pen;
     html += `<div class="penalty-box ${checked ? 'checked' : ''}">${checked ? 'X' : ''}</div>`;
   }
   el.innerHTML = html;
@@ -1421,17 +1593,21 @@ function renderPenalties() {
 
 function renderScoreSummary() {
   const el = document.getElementById('score-summary');
+  const data = getViewingData();
+  if (!data) { el.innerHTML = ''; return; }
+
   let totalScore = 0;
   let html = '<div class="score-summary-grid">';
   html += '<div class="header">Red</div><div class="header">Blue</div><div class="header">Green</div><div class="header">Yellow</div><div class="header">Pen.</div><div class="header">Total</div>';
 
   const scores = {};
   for (const color of COLORS) {
-    const mc = game.marked[color].length + (game.hasLockBonus[color] ? 1 : 0);
+    const colorMarks = data.marks[color] || [];
+    const mc = colorMarks.length + (data.hasLockBonus[color] ? 1 : 0);
     scores[color] = getScore(mc);
     totalScore += scores[color];
   }
-  const penaltyScore = game.penalties * 5;
+  const penaltyScore = data.penalties * 5;
   totalScore -= penaltyScore;
 
   for (const color of COLORS) {
@@ -1534,6 +1710,7 @@ function renderAll() {
   renderDice();
   renderDiceSums();
   renderPhaseBar();
+  renderScorecardTabs();
   renderScorecard();
   renderPenalties();
   renderScoreSummary();
@@ -1640,6 +1817,9 @@ function finishMarking() {
 
   // Broadcast any row locks now that the player has committed
   broadcastPendingLocks();
+
+  // Broadcast our scorecard state so others can view it
+  broadcastMarks();
 
   // Send ready signal
   if (peerConnected) {
@@ -1771,6 +1951,7 @@ function manualNextTurn() {
 
 function resetTurnState() {
   undoStack = [];
+  viewingPlayer = 0; // snap back to own scorecard at turn start
   game.phase = 'roll';
   game.diceRolled = false;
   game.usedWhite = false;
@@ -1828,6 +2009,20 @@ function checkAutoLock(color, num) {
   if (idx === nums.length - 1) {
     lockRow(color, true);
   }
+}
+
+function broadcastMarks() {
+  if (!peerConnected) return;
+  const msg = {
+    type: 'marks',
+    player: game.myPlayer,
+    name: game.playerName,
+    marked: game.marked,
+    hasLockBonus: game.hasLockBonus,
+    penalties: game.penalties,
+  };
+  if (isHost) broadcast(msg);
+  else sendToHost(msg);
 }
 
 function broadcastPendingLocks() {
@@ -1983,6 +2178,41 @@ diceArea.addEventListener('click', () => {
   if (!touchHandled && game.phase === 'roll') doRoll();
   touchHandled = false;
 });
+
+// ===== SCORECARD SWIPE =====
+const scorecardViewer = document.getElementById('scorecard-viewer');
+let scSwipeStartX = 0;
+
+scorecardViewer.addEventListener('touchstart', e => {
+  scSwipeStartX = e.touches[0].clientX;
+}, { passive: true });
+
+scorecardViewer.addEventListener('touchend', e => {
+  const dx = e.changedTouches[0].clientX - scSwipeStartX;
+  if (Math.abs(dx) < 50) return; // too short
+
+  // Build ordered player list: [0 (self), 2, 3, ...] skipping myPlayer
+  const players = [0];
+  for (let p = 1; p <= game.playerCount; p++) {
+    if (p !== game.myPlayer) players.push(p);
+  }
+
+  const currentIdx = viewingPlayer === 0 || viewingPlayer === game.myPlayer
+    ? 0 : players.indexOf(viewingPlayer);
+
+  let nextIdx;
+  if (dx < 0) {
+    // Swipe left → next player
+    nextIdx = Math.min(currentIdx + 1, players.length - 1);
+  } else {
+    // Swipe right → previous player
+    nextIdx = Math.max(currentIdx - 1, 0);
+  }
+
+  if (nextIdx !== currentIdx) {
+    switchScorecard(players[nextIdx]);
+  }
+}, { passive: true });
 
 // ===== SAVE/LOAD =====
 function saveState() {
