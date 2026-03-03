@@ -325,7 +325,31 @@ html, body {
   align-items: center;
   justify-content: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
+
+/* Inline dice choice */
+.dice-choice {
+  display: none;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.dice-choice.visible { display: flex; }
+.dice-choice-label { font-size: 0.8rem; color: var(--muted); }
+.dice-choice-btn {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+.dice-choice-btn:active { transform: scale(0.95); }
+.dice-choice-btn.white-choice { background: #f0f0f0; color: #222; }
+.dice-choice-btn.color-choice { color: white; }
 
 /* Scorecard */
 .scorecard {
@@ -508,29 +532,6 @@ html, body {
 }
 .actions .btn { margin-top: 0; }
 
-/* Modal overlay (dice choice, etc.) */
-.lock-modal {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.7);
-  z-index: 80;
-  display: none;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-}
-.lock-modal.visible { display: flex; }
-
-.lock-modal-box {
-  background: var(--card-bg);
-  border-radius: 12px;
-  padding: 20px;
-  text-align: center;
-  max-width: 300px;
-  width: 100%;
-}
-.lock-modal-box .btn { margin-top: 10px; }
-
 /* Game Over Overlay */
 .game-over-overlay {
   display: none;
@@ -668,7 +669,7 @@ html, body {
 <!-- SETUP SCREEN -->
 <div id="setup-screen">
   <h1>DistroDice</h1>
-  <p class="subtitle">A multiplayer dice game</p>
+  <p class="subtitle">v2.0.0 — A multiplayer dice game</p>
 
   <div class="setup-group" id="create-group">
     <h2>Create Game</h2>
@@ -722,6 +723,12 @@ html, body {
 
   <div class="phase-bar" id="phase-bar">Waiting...</div>
 
+  <div class="dice-choice" id="dice-choice">
+    <span class="dice-choice-label">Use which dice?</span>
+    <button class="dice-choice-btn white-choice" id="dice-choice-white">White</button>
+    <button class="dice-choice-btn color-choice" id="dice-choice-color">Colour</button>
+  </div>
+
   <div class="scorecard" id="scorecard"></div>
 
   <div class="legend">
@@ -743,14 +750,6 @@ html, body {
 <!-- Turn Flash Overlay -->
 <div class="turn-flash" id="turn-flash"></div>
 
-<!-- Dice Choice Modal -->
-<div class="lock-modal" id="dice-choice-modal">
-  <div class="lock-modal-box">
-    <p>Use which dice for this cell?</p>
-    <button class="btn btn-secondary" id="dice-choice-white" style="margin-top:8px;">White Dice</button>
-    <button class="btn btn-primary" id="dice-choice-color" style="margin-top:8px;">Colour Dice</button>
-  </div>
-</div>
 
 <!-- Game Over Overlay -->
 <div class="game-over-overlay" id="game-over-overlay">
@@ -871,6 +870,7 @@ function doUndo() {
   const snap = undoStack.pop();
   Object.assign(game, snap);
   document.getElementById('game-over-overlay').classList.remove('visible');
+  document.getElementById('dice-choice').classList.remove('visible');
   gameOverShown = false;
   renderAll();
 }
@@ -1765,13 +1765,14 @@ function lockRow(color, myLock) {
 }
 
 function showDiceChoiceModal(color, num) {
-  const modal = document.getElementById('dice-choice-modal');
+  const container = document.getElementById('dice-choice');
   const whiteBtn = document.getElementById('dice-choice-white');
   const colorBtn = document.getElementById('dice-choice-color');
 
-  // Update button labels
-  whiteBtn.textContent = `White Dice (${game.dice.white1 + game.dice.white2})`;
+  // Update button labels and colour
+  whiteBtn.textContent = `White (${game.dice.white1 + game.dice.white2})`;
   colorBtn.textContent = `${color.charAt(0).toUpperCase() + color.slice(1)} Combo`;
+  colorBtn.style.background = `var(--${color})`;
 
   // Clone buttons to remove old listeners
   const newWhite = whiteBtn.cloneNode(true);
@@ -1781,18 +1782,18 @@ function showDiceChoiceModal(color, num) {
 
   newWhite.addEventListener('click', () => {
     game.usedWhite = true;
-    modal.classList.remove('visible');
+    container.classList.remove('visible');
     checkAutoLock(color, num);
     renderAll();
   });
   newColor.addEventListener('click', () => {
     game.usedColor = true;
-    modal.classList.remove('visible');
+    container.classList.remove('visible');
     checkAutoLock(color, num);
     renderAll();
   });
 
-  modal.classList.add('visible');
+  container.classList.add('visible');
 }
 
 function checkAutoLock(color, num) {
