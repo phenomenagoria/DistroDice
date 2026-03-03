@@ -801,6 +801,7 @@ let game = {
   pendingLocks: [],  // rows that will lock at start of next turn
   penalties: 0,
   gameOver: false,
+  gameOverPending: false, // true when host said game over but player is revising marks
   lockedRowCount: 0,
 };
 
@@ -809,6 +810,8 @@ let playerNames = {};     // { playerNumber: name }
 let playerPenalties = {}; // { playerNumber: count } — host tracks
 let playerScores = {};    // { playerNumber: { name, score } } — for leaderboard
 let gameOverShown = false;
+let pendingGameOver = null;   // reason string when game-over is pending revision
+let preFinishSnapshot = null; // snapshot saved before finishMarking, for undo-done
 
 // ===== UNDO =====
 let undoStack = [];
@@ -825,6 +828,7 @@ function snapshotForUndo() {
     penalties: game.penalties,
     lockedRowCount: game.lockedRowCount,
     gameOver: game.gameOver,
+    gameOverPending: game.gameOverPending,
   };
 }
 
@@ -999,11 +1003,20 @@ function handlePeerMessage(data, fromConn) {
       }
       break;
 
+    case 'unready':
+      if (isHost) {
+        readyPlayers.delete(data.player);
+        broadcast({ type: 'readyCount', ready: readyPlayers.size, total: game.playerCount });
+        updateWaitingText(readyPlayers.size, game.playerCount);
+      }
+      break;
+
     case 'readyCount':
       updateWaitingText(data.ready, data.total);
       break;
 
     case 'nextTurn':
+      preFinishSnapshot = null; // turn advanced, can't undo Done anymore
       game.turnNumber = data.turnNumber;
       resetTurnState();
       renderAll();
@@ -1015,7 +1028,13 @@ function handlePeerMessage(data, fromConn) {
       if (!game.pendingLocks.includes(data.color) && !game.rowLocked[data.color]) {
         game.pendingLocks.push(data.color);
         const lockerName = data.name || `Player ${data.player || '?'}`;
-        showNotification(`${data.color.toUpperCase()} row locked by ${lockerName}! (locks next turn)`);
+        // If player is waiting, pull them back to revise marks
+        if (game.phase === 'waiting' && data.player !== game.myPlayer) {
+          revertToMarking();
+          showNotification(`${data.color.toUpperCase()} row locked by ${lockerName}! Review your marks.`);
+        } else {
+          showNotification(`${data.color.toUpperCase()} row locked by ${lockerName}! (locks next turn)`);
+        }
         renderAll();
       }
       if (isHost && fromConn) {
@@ -1042,28 +1061,29 @@ function handlePeerMessage(data, fromConn) {
     case 'score':
       // A player is reporting their final score (host collects)
       if (isHost) {
-        playerScores[data.player] = { name: data.name, score: data.score };
-        // If we have all scores, broadcast leaderboard
-        if (Object.keys(playerScores).length >= game.playerCount) {
-          broadcast({ type: 'leaderboard', scores: playerScores, reason: data.reason || '' });
-          showLeaderboard(playerScores, data.reason || '');
-        }
+        hostCollectScore(data.player, data.name, data.score, data.reason);
       }
       break;
 
     case 'gameOver':
       // Host says game is over
       if (!gameOverShown) {
-        game.gameOver = true;
-        game.phase = 'done';
-        // Send our score to host
-        const myScore = getMyTotalScore();
-        sendToHost({ type: 'score', player: game.myPlayer, name: game.playerName, score: myScore, reason: data.reason });
-        document.getElementById('game-over-reason').textContent = data.reason || 'Game Over';
-        showLeaderboardWaiting();
-        document.getElementById('game-over-overlay').classList.add('visible');
-        gameOverShown = true;
-        renderAll();
+        pendingGameOver = data.reason || 'Game Over';
+        if (data.immediate || game.phase === 'roll' || game.phase === 'done') {
+          // No revision possible (e.g. locks at turn start)
+          finalizeGameOver(pendingGameOver);
+        } else if (game.phase === 'waiting') {
+          // Pull back to mark phase so they can revise
+          revertToMarking();
+          showNotification(`Game ending: ${pendingGameOver} — Review your marks, then tap Done.`);
+          game.gameOverPending = true;
+          renderAll();
+        } else {
+          // Player is still marking — let them finish, then tap Done to confirm
+          game.gameOverPending = true;
+          showNotification(`Game ending: ${pendingGameOver} — Finish your marks, then tap Done.`);
+          renderAll();
+        }
       }
       break;
 
@@ -1077,27 +1097,36 @@ function handlePeerMessage(data, fromConn) {
 function triggerNetworkedGameOver(reason) {
   if (!isHost || gameOverShown) return;
 
-  // Broadcast game over to all clients
+  // Broadcast game over to all clients — they'll get a chance to revise
   broadcast({ type: 'gameOver', reason: reason });
 
-  // Host also ends locally
-  game.gameOver = true;
-  game.phase = 'done';
-  gameOverShown = true;
+  // Unready all players so they can revise
+  readyPlayers.clear();
+  broadcast({ type: 'readyCount', ready: 0, total: game.playerCount });
 
-  // Host submits own score
-  const myScore = getMyTotalScore();
-  playerScores[game.myPlayer] = { name: game.playerName, score: myScore };
+  // Host also enters pending game-over state
+  pendingGameOver = reason;
+  game.gameOverPending = true;
 
-  document.getElementById('game-over-reason').textContent = reason;
-  showLeaderboardWaiting();
-  document.getElementById('game-over-overlay').classList.add('visible');
+  // If host is currently waiting, revert to marking
+  if (game.phase === 'waiting') {
+    revertToMarking();
+    showNotification(`Game ending: ${reason} — Review your marks, then tap Done.`);
+  } else if (game.phase === 'mark') {
+    showNotification(`Game ending: ${reason} — Finish your marks, then tap Done.`);
+  } else {
+    // Host already done (e.g. they caused it by pressing Done with 4 penalties)
+    finalizeGameOver(reason);
+    return;
+  }
   renderAll();
+}
 
-  // If all scores are in (maybe single player scenario or all already reported)
+function hostCollectScore(player, name, score, reason) {
+  playerScores[player] = { name: name, score: score };
   if (Object.keys(playerScores).length >= game.playerCount) {
-    broadcast({ type: 'leaderboard', scores: playerScores, reason: reason });
-    showLeaderboard(playerScores, reason);
+    broadcast({ type: 'leaderboard', scores: playerScores, reason: reason || '' });
+    showLeaderboard(playerScores, reason || '');
   }
 }
 
@@ -1374,9 +1403,14 @@ function renderActions() {
   let html = '';
 
   if (game.phase === 'mark') {
-    html += `<button class="btn btn-success" onclick="finishMarking()">Done</button>`;
+    const doneLabel = game.gameOverPending ? 'Confirm & End Game' : 'Done';
+    const doneClass = game.gameOverPending ? 'btn btn-warning' : 'btn btn-success';
+    html += `<button class="${doneClass}" onclick="finishMarking()">${doneLabel}</button>`;
   } else if (game.phase === 'waiting') {
     html += `<button class="btn btn-secondary" disabled>Waiting...</button>`;
+    if (preFinishSnapshot) {
+      html += `<button class="btn btn-secondary" onclick="undoFinishMarking()" style="flex:0 0 auto;width:auto;padding:12px 16px;">Undo</button>`;
+    }
     // Fallback manual advance if no peer connection
     if (!peerConnected) {
       html += `<button class="btn btn-primary" onclick="manualNextTurn()">Next Turn</button>`;
@@ -1423,7 +1457,9 @@ function renderPhaseBar() {
       el.textContent = game.isMyTurn ? 'Tap or swipe the dice to roll!' : 'Rolling...';
       break;
     case 'mark':
-      if (game.isMyTurn) {
+      if (game.gameOverPending) {
+        el.textContent = 'Game ending — review your marks, then tap Done to confirm.';
+      } else if (game.isMyTurn) {
         const parts = [];
         if (!game.usedWhite) parts.push('white');
         if (!game.usedColor) parts.push('colored');
@@ -1522,15 +1558,28 @@ function handleCellClick(color, num) {
 function finishMarking() {
   if (game.gameOver) return;
 
+  // If game over is pending (from host), finalize now
+  if (game.gameOverPending) {
+    finalizeGameOver(pendingGameOver || 'Game Over');
+    return;
+  }
+
+  // Save snapshot so player can undo Done while waiting
+  preFinishSnapshot = snapshotForUndo();
+
   // Active player who marked nothing gets auto-penalty
   if (game.isMyTurn && !game.usedWhite && !game.usedColor) {
-    pushUndo();
     game.penalties++;
     showNotification('No moves made — penalty!');
     broadcastPenalty();
     if (game.penalties >= 4) {
+      const reason = `${game.playerName || 'Player ' + game.myPlayer} took 4 penalties!`;
       if (peerConnected && isHost) {
-        triggerNetworkedGameOver(`${game.playerName || 'Player ' + game.myPlayer} took 4 penalties!`);
+        // Host caused it — broadcast to others and finalize immediately
+        broadcast({ type: 'gameOver', reason: reason });
+        readyPlayers.clear();
+        broadcast({ type: 'readyCount', ready: 0, total: game.playerCount });
+        finalizeGameOver(reason);
         return;
       } else if (peerConnected) {
         // Client: host will detect via penalty message
@@ -1554,6 +1603,7 @@ function finishMarking() {
       updateWaitingText(readyPlayers.size, game.playerCount);
       if (readyPlayers.size >= game.playerCount) {
         readyPlayers.clear();
+        preFinishSnapshot = null; // too late to undo
         game.turnNumber++;
         resetTurnState();
         broadcast({ type: 'nextTurn', turnNumber: game.turnNumber });
@@ -1568,18 +1618,72 @@ function finishMarking() {
     game.phase = 'waiting';
   } else {
     game.phase = 'done';
+    preFinishSnapshot = null;
   }
   renderAll();
 }
 
+function revertToMarking() {
+  // Pull player back from waiting to mark phase, send unready to host
+  if (preFinishSnapshot) {
+    Object.assign(game, preFinishSnapshot);
+    preFinishSnapshot = null;
+  } else {
+    game.phase = 'mark';
+  }
+
+  // Tell host we're no longer ready
+  if (peerConnected) {
+    const msg = { type: 'unready', player: game.myPlayer };
+    if (isHost) {
+      readyPlayers.delete(game.myPlayer);
+      broadcast({ type: 'readyCount', ready: readyPlayers.size, total: game.playerCount });
+      updateWaitingText(readyPlayers.size, game.playerCount);
+    } else {
+      sendToHost(msg);
+    }
+  }
+}
+
+function undoFinishMarking() {
+  // Player manually undoes pressing Done
+  revertToMarking();
+  showNotification('Turn reopened — adjust your marks.');
+  renderAll();
+}
+
+function finalizeGameOver(reason) {
+  // Called when player confirms Done during a pending game over
+  game.gameOver = true;
+  game.phase = 'done';
+  game.gameOverPending = false;
+  gameOverShown = true;
+
+  const myScore = getMyTotalScore();
+  document.getElementById('game-over-reason').textContent = reason;
+
+  if (peerConnected) {
+    if (isHost) {
+      hostCollectScore(game.myPlayer, game.playerName, myScore, reason);
+    } else {
+      sendToHost({ type: 'score', player: game.myPlayer, name: game.playerName, score: myScore, reason: reason });
+    }
+    showLeaderboardWaiting();
+  } else {
+    const el = document.getElementById('game-over-leaderboard');
+    el.innerHTML = `<table class="leaderboard"><thead><tr><th>Player</th><th style="text-align:right;">Score</th></tr></thead><tbody>
+      <tr class="winner is-me"><td>${game.playerName || 'You'}</td><td>${myScore}</td></tr>
+    </tbody></table>`;
+  }
+  document.getElementById('game-over-overlay').classList.add('visible');
+  renderAll();
+}
+
 function broadcastPenalty() {
+  // Just sends the penalty count; game-over logic is handled by finishMarking (host) or host's penalty handler (client)
   const msg = { type: 'penalty', player: game.myPlayer, name: game.playerName, count: game.penalties };
   if (isHost) {
     playerPenalties[game.myPlayer] = game.penalties;
-    // Host checks locally
-    if (game.penalties >= 4) {
-      triggerNetworkedGameOver(`${game.playerName || 'Player ' + game.myPlayer} took 4 penalties!`);
-    }
   } else if (peerConnected) {
     sendToHost(msg);
   }
@@ -1599,11 +1703,12 @@ function resetTurnState() {
   // Apply deferred row locks at the start of the new turn
   if (game.pendingLocks.length > 0) {
     applyPendingLocks();
-    // Check if game ends due to 2+ locked rows
+    // Check if game ends due to 2+ locked rows (at turn start, no revision needed)
     if (game.lockedRowCount >= 2) {
       const reason = '2 rows have been locked!';
       if (peerConnected && isHost) {
-        triggerNetworkedGameOver(reason);
+        broadcast({ type: 'gameOver', reason: reason, immediate: true });
+        finalizeGameOver(reason);
       } else {
         checkGameEnd();
       }
