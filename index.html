@@ -712,7 +712,7 @@ html, body {
 <!-- SETUP SCREEN -->
 <div id="setup-screen">
   <h1>DistroDice</h1>
-  <p class="subtitle">v2.1.0 — A multiplayer dice game</p>
+  <p class="subtitle">v2.1.1 — A multiplayer dice game</p>
 
   <div class="setup-group" id="create-group">
     <h2>Create Game</h2>
@@ -2179,40 +2179,7 @@ diceArea.addEventListener('click', () => {
   touchHandled = false;
 });
 
-// ===== SCORECARD SWIPE =====
-const scorecardViewer = document.getElementById('scorecard-viewer');
-let scSwipeStartX = 0;
 
-scorecardViewer.addEventListener('touchstart', e => {
-  scSwipeStartX = e.touches[0].clientX;
-}, { passive: true });
-
-scorecardViewer.addEventListener('touchend', e => {
-  const dx = e.changedTouches[0].clientX - scSwipeStartX;
-  if (Math.abs(dx) < 50) return; // too short
-
-  // Build ordered player list: [0 (self), 2, 3, ...] skipping myPlayer
-  const players = [0];
-  for (let p = 1; p <= game.playerCount; p++) {
-    if (p !== game.myPlayer) players.push(p);
-  }
-
-  const currentIdx = viewingPlayer === 0 || viewingPlayer === game.myPlayer
-    ? 0 : players.indexOf(viewingPlayer);
-
-  let nextIdx;
-  if (dx < 0) {
-    // Swipe left → next player
-    nextIdx = Math.min(currentIdx + 1, players.length - 1);
-  } else {
-    // Swipe right → previous player
-    nextIdx = Math.max(currentIdx - 1, 0);
-  }
-
-  if (nextIdx !== currentIdx) {
-    switchScorecard(players[nextIdx]);
-  }
-}, { passive: true });
 
 // ===== SAVE/LOAD =====
 function saveState() {
