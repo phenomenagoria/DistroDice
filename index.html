@@ -1061,17 +1061,30 @@ function handlePeerMessage(data, fromConn) {
         game.rowLocked[data.color] = true;
         game.lockedRowCount = COLORS.filter(c => game.rowLocked[c]).length;
         const lockerName = data.name || `Player ${data.player || '?'}`;
-        // If player is waiting, pull them back to revise marks
-        if (game.phase === 'waiting' && data.player !== game.myPlayer) {
+
+        if (isHost && fromConn) {
+          // Relay to other clients first
+          connections.forEach(c => {
+            if (c !== fromConn) {
+              try { c.send(data); } catch (e) {}
+            }
+          });
+        }
+
+        // Check if 2+ rows locked — game over
+        if (game.lockedRowCount >= 2 && isHost && !gameOverShown) {
+          triggerNetworkedGameOver('2 rows have been locked!');
+        } else if (game.phase === 'waiting' && data.player !== game.myPlayer) {
+          // If player is waiting, pull them back to revise marks
           revertToMarking();
           showNotification(`${data.color.toUpperCase()} row locked by ${lockerName}! Review your marks.`);
+          renderAll();
         } else {
           showNotification(`${data.color.toUpperCase()} row locked by ${lockerName}!`);
+          renderAll();
         }
-        renderAll();
-      }
-      if (isHost && fromConn) {
-        // Relay to other clients
+      } else if (isHost && fromConn) {
+        // Already locked but still relay to other clients
         connections.forEach(c => {
           if (c !== fromConn) {
             try { c.send(data); } catch (e) {}
@@ -1658,13 +1671,10 @@ function finishMarking() {
 }
 
 function revertToMarking() {
-  // Pull player back from waiting to mark phase, send unready to host
-  if (preFinishSnapshot) {
-    Object.assign(game, preFinishSnapshot);
-    preFinishSnapshot = null;
-  } else {
-    game.phase = 'mark';
-  }
+  // Pull player back from waiting to mark phase, send unready to host.
+  // Only revert phase — keep current marks, locks, and penalties as-is.
+  // Player can use the normal Undo button to change individual marks.
+  game.phase = 'mark';
 
   // Tell host we're no longer ready
   if (peerConnected) {
@@ -1680,8 +1690,36 @@ function revertToMarking() {
 }
 
 function undoFinishMarking() {
-  // Player manually undoes pressing Done
-  revertToMarking();
+  // Player manually undoes pressing Done — restore their marks but preserve lock state
+  if (preFinishSnapshot) {
+    // Save current lock state before restoring snapshot
+    const currentLocks = { ...game.rowLocked };
+    const currentLockCount = game.lockedRowCount;
+    const currentLocksBroadcast = { ...game.locksBroadcast };
+
+    Object.assign(game, preFinishSnapshot);
+
+    // Re-apply lock state (locks from other players shouldn't be reverted)
+    game.rowLocked = currentLocks;
+    game.lockedRowCount = currentLockCount;
+    game.locksBroadcast = currentLocksBroadcast;
+
+    preFinishSnapshot = null;
+  }
+  game.phase = 'mark';
+
+  // Tell host we're no longer ready
+  if (peerConnected) {
+    const msg = { type: 'unready', player: game.myPlayer };
+    if (isHost) {
+      readyPlayers.delete(game.myPlayer);
+      broadcast({ type: 'readyCount', ready: readyPlayers.size, total: game.playerCount });
+      updateWaitingText(readyPlayers.size, game.playerCount);
+    } else {
+      sendToHost(msg);
+    }
+  }
+
   showNotification('Turn reopened — adjust your marks.');
   renderAll();
 }
@@ -1733,19 +1771,6 @@ function manualNextTurn() {
 
 function resetTurnState() {
   undoStack = [];
-
-  // Check if game ends due to 2+ locked rows
-  if (game.lockedRowCount >= 2) {
-    const reason = '2 rows have been locked!';
-    if (peerConnected && isHost) {
-      broadcast({ type: 'gameOver', reason: reason, immediate: true });
-      finalizeGameOver(reason);
-    } else {
-      checkGameEnd();
-    }
-    if (game.gameOver) return;
-  }
-
   game.phase = 'roll';
   game.diceRolled = false;
   game.usedWhite = false;
@@ -1757,6 +1782,7 @@ function resetTurnState() {
 
 function lockRow(color, myLock) {
   // Lock immediately for the local player; broadcast happens in finishMarking after player confirms
+  if (game.rowLocked[color]) return; // already locked
   game.rowLocked[color] = true;
   game.lockedRowCount = COLORS.filter(c => game.rowLocked[c]).length;
   if (myLock) {
