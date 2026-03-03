@@ -508,6 +508,29 @@ html, body {
 }
 .actions .btn { margin-top: 0; }
 
+/* Modal overlay (dice choice, etc.) */
+.lock-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  z-index: 80;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.lock-modal.visible { display: flex; }
+
+.lock-modal-box {
+  background: var(--card-bg);
+  border-radius: 12px;
+  padding: 20px;
+  text-align: center;
+  max-width: 300px;
+  width: 100%;
+}
+.lock-modal-box .btn { margin-top: 10px; }
+
 /* Game Over Overlay */
 .game-over-overlay {
   display: none;
@@ -593,7 +616,7 @@ html, body {
 }
 
 .leaderboard tr.winner td:first-child::before {
-  content: '\uD83D\uDC51 ';
+  content: '👑 ';
 }
 
 .leaderboard tr.is-me td {
@@ -720,6 +743,15 @@ html, body {
 <!-- Turn Flash Overlay -->
 <div class="turn-flash" id="turn-flash"></div>
 
+<!-- Dice Choice Modal -->
+<div class="lock-modal" id="dice-choice-modal">
+  <div class="lock-modal-box">
+    <p>Use which dice for this cell?</p>
+    <button class="btn btn-secondary" id="dice-choice-white" style="margin-top:8px;">White Dice</button>
+    <button class="btn btn-primary" id="dice-choice-color" style="margin-top:8px;">Colour Dice</button>
+  </div>
+</div>
+
 <!-- Game Over Overlay -->
 <div class="game-over-overlay" id="game-over-overlay">
   <div class="game-over-box">
@@ -798,7 +830,7 @@ let game = {
   marked: { red: [], blue: [], green: [], yellow: [] },
   rowLocked: { red: false, blue: false, green: false, yellow: false },
   hasLockBonus: { red: false, blue: false, green: false, yellow: false },
-  pendingLocks: [],  // rows that will lock at start of next turn
+  locksBroadcast: { red: false, blue: false, green: false, yellow: false },
   penalties: 0,
   gameOver: false,
   gameOverPending: false, // true when host said game over but player is revising marks
@@ -824,7 +856,7 @@ function snapshotForUndo() {
     marked: { red: [...game.marked.red], blue: [...game.marked.blue], green: [...game.marked.green], yellow: [...game.marked.yellow] },
     rowLocked: { ...game.rowLocked },
     hasLockBonus: { ...game.hasLockBonus },
-    pendingLocks: [...game.pendingLocks],
+    locksBroadcast: { ...game.locksBroadcast },
     penalties: game.penalties,
     lockedRowCount: game.lockedRowCount,
     gameOver: game.gameOver,
@@ -1025,15 +1057,16 @@ function handlePeerMessage(data, fromConn) {
       break;
 
     case 'lock':
-      if (!game.pendingLocks.includes(data.color) && !game.rowLocked[data.color]) {
-        game.pendingLocks.push(data.color);
+      if (!game.rowLocked[data.color]) {
+        game.rowLocked[data.color] = true;
+        game.lockedRowCount = COLORS.filter(c => game.rowLocked[c]).length;
         const lockerName = data.name || `Player ${data.player || '?'}`;
         // If player is waiting, pull them back to revise marks
         if (game.phase === 'waiting' && data.player !== game.myPlayer) {
           revertToMarking();
           showNotification(`${data.color.toUpperCase()} row locked by ${lockerName}! Review your marks.`);
         } else {
-          showNotification(`${data.color.toUpperCase()} row locked by ${lockerName}! (locks next turn)`);
+          showNotification(`${data.color.toUpperCase()} row locked by ${lockerName}!`);
         }
         renderAll();
       }
@@ -1532,8 +1565,9 @@ function handleCellClick(color, num) {
 
   // Decide which slot to consume
   if (v.color && v.white) {
-    // Both valid — prefer color (more restrictive), preserves white for other rows
-    game.usedColor = true;
+    // Both valid — let the player choose
+    showDiceChoiceModal(color, num);
+    return; // don't render yet; modal will handle it
   } else if (v.color) {
     game.usedColor = true;
   } else {
@@ -1700,60 +1734,86 @@ function manualNextTurn() {
 function resetTurnState() {
   undoStack = [];
 
-  // Apply deferred row locks at the start of the new turn
-  if (game.pendingLocks.length > 0) {
-    applyPendingLocks();
-    // Check if game ends due to 2+ locked rows (at turn start, no revision needed)
-    if (game.lockedRowCount >= 2) {
-      const reason = '2 rows have been locked!';
-      if (peerConnected && isHost) {
-        broadcast({ type: 'gameOver', reason: reason, immediate: true });
-        finalizeGameOver(reason);
-      } else {
-        checkGameEnd();
-      }
-      if (game.gameOver) return;
+  // Check if game ends due to 2+ locked rows
+  if (game.lockedRowCount >= 2) {
+    const reason = '2 rows have been locked!';
+    if (peerConnected && isHost) {
+      broadcast({ type: 'gameOver', reason: reason, immediate: true });
+      finalizeGameOver(reason);
+    } else {
+      checkGameEnd();
     }
+    if (game.gameOver) return;
   }
 
   game.phase = 'roll';
   game.diceRolled = false;
   game.usedWhite = false;
   game.usedColor = false;
+  game.locksBroadcast = { red: false, blue: false, green: false, yellow: false };
   game.dice = { white1: 0, white2: 0, red: 0, blue: 0, green: 0, yellow: 0 };
   game.whiteSum = 0;
 }
 
 function lockRow(color, myLock) {
-  // Row locks are deferred — they apply at the start of the next turn
-  // No broadcast here; broadcast happens in finishMarking after player confirms
-  if (!game.pendingLocks.includes(color)) {
-    game.pendingLocks.push(color);
-  }
+  // Lock immediately for the local player; broadcast happens in finishMarking after player confirms
+  game.rowLocked[color] = true;
+  game.lockedRowCount = COLORS.filter(c => game.rowLocked[c]).length;
   if (myLock) {
     game.hasLockBonus[color] = true;
   }
 }
 
+function showDiceChoiceModal(color, num) {
+  const modal = document.getElementById('dice-choice-modal');
+  const whiteBtn = document.getElementById('dice-choice-white');
+  const colorBtn = document.getElementById('dice-choice-color');
+
+  // Update button labels
+  whiteBtn.textContent = `White Dice (${game.dice.white1 + game.dice.white2})`;
+  colorBtn.textContent = `${color.charAt(0).toUpperCase() + color.slice(1)} Combo`;
+
+  // Clone buttons to remove old listeners
+  const newWhite = whiteBtn.cloneNode(true);
+  const newColor = colorBtn.cloneNode(true);
+  whiteBtn.parentNode.replaceChild(newWhite, whiteBtn);
+  colorBtn.parentNode.replaceChild(newColor, colorBtn);
+
+  newWhite.addEventListener('click', () => {
+    game.usedWhite = true;
+    modal.classList.remove('visible');
+    checkAutoLock(color, num);
+    renderAll();
+  });
+  newColor.addEventListener('click', () => {
+    game.usedColor = true;
+    modal.classList.remove('visible');
+    checkAutoLock(color, num);
+    renderAll();
+  });
+
+  modal.classList.add('visible');
+}
+
+function checkAutoLock(color, num) {
+  const nums = ROW_NUMBERS[color];
+  const idx = nums.indexOf(num);
+  if (idx === nums.length - 1) {
+    lockRow(color, true);
+  }
+}
+
 function broadcastPendingLocks() {
   // Called from finishMarking — only broadcast locks once the player commits
-  for (const color of game.pendingLocks) {
-    if (game.hasLockBonus[color]) {
-      showNotification(`You locked the ${color.toUpperCase()} row! (+1 bonus mark, locks next turn)`);
+  for (const color of COLORS) {
+    if (game.hasLockBonus[color] && !game.locksBroadcast[color]) {
+      game.locksBroadcast[color] = true;
+      showNotification(`You locked the ${color.toUpperCase()} row! (+1 bonus mark)`);
       const msg = { type: 'lock', color: color, player: game.myPlayer, name: game.playerName };
       if (isHost) broadcast(msg);
       else sendToHost(msg);
     }
   }
-}
-
-function applyPendingLocks() {
-  // Apply deferred locks at start of new turn
-  for (const color of game.pendingLocks) {
-    game.rowLocked[color] = true;
-  }
-  game.pendingLocks = [];
-  game.lockedRowCount = COLORS.filter(c => game.rowLocked[c]).length;
 }
 
 function doRoll() {
@@ -1783,7 +1843,7 @@ function autoRollIfNeeded() {
 function checkGameEnd() {
   let reason = '';
   if (game.penalties >= 4) reason = 'You used all 4 penalties!';
-  if (game.lockedRowCount >= 2) reason = '2 rows have been locked!'; // checked after applyPendingLocks
+  if (game.lockedRowCount >= 2) reason = '2 rows have been locked!';
 
   if (reason && !gameOverShown) {
     game.gameOver = true;
@@ -1801,19 +1861,6 @@ function checkGameEnd() {
       </tbody></table>`;
     }
     document.getElementById('game-over-overlay').classList.add('visible');
-  }
-}
-
-function checkGameEndHost() {
-  // Host-side: checks and triggers networked game over
-  if (gameOverShown) return;
-
-  let reason = '';
-  if (game.penalties >= 4) reason = `${game.playerName || 'Player ' + game.myPlayer} took 4 penalties!`;
-  if (game.lockedRowCount >= 2) reason = '2 rows have been locked!';
-
-  if (reason) {
-    triggerNetworkedGameOver(reason);
   }
 }
 
