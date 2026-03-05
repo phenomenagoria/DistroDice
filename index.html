@@ -727,7 +727,7 @@ html, body {
 <!-- SETUP SCREEN -->
 <div id="setup-screen">
   <h1>DistroDice</h1>
-  <p class="subtitle">v2.2.1 — A multiplayer dice game</p>
+  <p class="subtitle">v2.2.2 — A multiplayer dice game</p>
 
   <div class="setup-group" id="create-group">
     <h2>Create Room</h2>
@@ -1307,23 +1307,16 @@ function handlePeerMessage(data, fromConn) {
       break;
 
     case 'gameOver':
-      // Host says game is over
       if (!gameOverShown) {
         pendingGameOver = data.reason || 'Game Over';
-        if (data.immediate || game.phase === 'roll' || game.phase === 'done') {
-          // No revision possible (e.g. locks at turn start)
-          finalizeGameOver(pendingGameOver);
-        } else if (game.phase === 'waiting') {
-          // Pull back to mark phase so they can revise
-          revertToMarking();
-          showNotification(`Game ending: ${pendingGameOver} — Review your marks, then tap Done.`);
-          game.gameOverPending = true;
-          renderAll();
-        } else {
-          // Player is still marking — let them finish, then tap Done to confirm
+        if (game.phase === 'mark') {
+          // Still marking — let them finish, then tap Done to confirm
           game.gameOverPending = true;
           showNotification(`Game ending: ${pendingGameOver} — Finish your marks, then tap Done.`);
           renderAll();
+        } else {
+          // Already committed (waiting/done/roll) — finalize immediately
+          finalizeGameOver(pendingGameOver);
         }
       }
       break;
@@ -1369,29 +1362,21 @@ function handlePeerMessage(data, fromConn) {
 function triggerNetworkedGameOver(reason) {
   if (!isHost || gameOverShown) return;
 
-  // Broadcast game over to all clients — they'll get a chance to revise
   broadcast({ type: 'gameOver', reason: reason });
-
-  // Unready all players so they can revise
   readyPlayers.clear();
   broadcast({ type: 'readyCount', ready: 0, total: game.playerCount });
 
-  // Host also enters pending game-over state
   pendingGameOver = reason;
   game.gameOverPending = true;
 
-  // If host is currently waiting, revert to marking
-  if (game.phase === 'waiting') {
-    revertToMarking();
-    showNotification(`Game ending: ${reason} — Review your marks, then tap Done.`);
-  } else if (game.phase === 'mark') {
+  if (game.phase === 'mark') {
+    // Host is still marking — let them finish
     showNotification(`Game ending: ${reason} — Finish your marks, then tap Done.`);
+    renderAll();
   } else {
-    // Host already done (e.g. they caused it by pressing Done with 4 penalties)
+    // Host already committed (waiting/done/roll) — finalize immediately
     finalizeGameOver(reason);
-    return;
   }
-  renderAll();
 }
 
 function hostCollectScore(player, name, score, reason) {
@@ -2106,7 +2091,6 @@ function resetTurnState() {
   game.diceRolled = false;
   game.usedWhite = false;
   game.usedColor = false;
-  game.locksBroadcast = { red: false, blue: false, green: false, yellow: false };
   game.dice = { white1: 0, white2: 0, red: 0, blue: 0, green: 0, yellow: 0 };
   game.whiteSum = 0;
 }
