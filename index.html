@@ -96,6 +96,21 @@ html, body {
 
 .setup-group input:focus { outline: none; border-color: var(--blue); }
 
+.lobby-player {
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  margin-bottom: 4px;
+}
+.lobby-player.connected {
+  background: rgba(46,204,113,0.15);
+  color: var(--green);
+}
+.lobby-player.waiting {
+  background: rgba(255,255,255,0.05);
+  color: var(--muted);
+}
+
 .seed-display {
   font-size: 1.5rem;
   font-weight: bold;
@@ -712,35 +727,36 @@ html, body {
 <!-- SETUP SCREEN -->
 <div id="setup-screen">
   <h1>DistroDice</h1>
-  <p class="subtitle">v2.1.2 — A multiplayer dice game</p>
+  <p class="subtitle">v2.2.0 — A multiplayer dice game</p>
 
   <div class="setup-group" id="create-group">
-    <h2>Create Game</h2>
+    <h2>Create Room</h2>
     <label for="create-name">Your Name</label>
     <input type="text" id="create-name" class="name-input" placeholder="Enter your name" maxlength="20" style="text-transform:none;letter-spacing:0;">
     <label for="player-count">Number of Players</label>
     <input type="number" id="player-count" min="2" max="8" value="2">
-    <button class="btn btn-primary" id="create-btn">Create Game</button>
-    <div id="seed-result" style="display:none;">
-      <label>Share this seed with other players:</label>
+    <button class="btn btn-primary" id="create-btn">Create Room</button>
+    <div id="host-lobby" style="display:none;">
+      <label>Share this code with other players:</label>
       <div class="seed-display" id="seed-display"></div>
-      <label>You are Player 1</label>
+      <div id="lobby-players" style="margin:12px 0;"></div>
+      <button class="btn btn-success" id="start-btn" disabled>Waiting for players...</button>
     </div>
   </div>
 
-  <div style="color:var(--muted); font-size:0.85rem;">-- or --</div>
+  <div id="setup-divider" style="color:var(--muted); font-size:0.85rem;">-- or --</div>
 
   <div class="setup-group" id="join-group">
-    <h2>Join Game</h2>
+    <h2>Join Room</h2>
     <label for="join-name">Your Name</label>
     <input type="text" id="join-name" class="name-input" placeholder="Enter your name" maxlength="20" style="text-transform:none;letter-spacing:0;">
-    <label for="join-seed">Game Seed</label>
+    <label for="join-seed">Room Code</label>
     <input type="text" id="join-seed" maxlength="6" placeholder="ABC123" style="text-transform:uppercase;">
-    <label for="join-count">Total Number of Players</label>
-    <input type="number" id="join-count" min="2" max="8" value="2">
-    <label for="join-player">Your Player Number</label>
-    <input type="number" id="join-player" min="1" max="8" value="2">
-    <button class="btn btn-secondary" id="join-btn">Join Game</button>
+    <button class="btn btn-secondary" id="join-btn">Join Room</button>
+    <div id="join-lobby" style="display:none;">
+      <div id="join-lobby-players" style="margin:12px 0;"></div>
+      <p id="join-lobby-status" style="color:var(--muted);font-size:0.85rem;text-align:center;">Connecting...</p>
+    </div>
   </div>
 
   <div class="setup-group" id="resume-group" style="display:none;">
@@ -750,7 +766,7 @@ html, body {
     <button class="btn btn-secondary" id="discard-btn">Discard &amp; Start Fresh</button>
   </div>
 
-  <button class="btn btn-success" id="start-btn" disabled style="max-width:360px;">Start Game</button>
+
 </div>
 
 <!-- GAME SCREEN -->
@@ -910,6 +926,8 @@ let playerScores = {};    // { playerNumber: { name, score } } — for leaderboa
 let allPlayerCards = {};   // { playerNumber: { marked, hasLockBonus, penalties } }
 let viewingPlayer = 0;     // 0 = viewing own scorecard, else player number
 let gameOverShown = false;
+let gameStarted = false;
+let connToPlayer = new Map();
 let pendingGameOver = null;   // reason string when game-over is pending revision
 let preFinishSnapshot = null; // snapshot saved before finishMarking, for undo-done
 
@@ -951,75 +969,141 @@ let isHost = false;
 let peerConnected = false;
 let readyPlayers = new Set();
 
-function setupPeer() {
-  if (typeof Peer === 'undefined') {
-    updateConnStatus('offline');
-    return;
+function getNextPlayerSlot() {
+  for (let i = 2; i <= game.playerCount; i++) {
+    if (!playerNames[i]) return i;
   }
+  return null;
+}
 
+function setupHostPeer() {
+  if (typeof Peer === 'undefined') {
+    alert('PeerJS not loaded. Check your connection.');
+    return false;
+  }
   const peerId = 'distrodice-' + game.seed.toLowerCase();
+  isHost = true;
+  try {
+    peer = new Peer(peerId);
+    peer.on('open', () => {
+      peerConnected = true;
+      updateLobbyUI();
+    });
+    peer.on('connection', conn => {
+      conn.on('open', () => {
+        conn.on('data', data => handlePeerMessage(data, conn));
+      });
+      conn.on('close', () => {
+        const playerNum = connToPlayer.get(conn.peer);
+        if (playerNum) {
+          if (!gameStarted) {
+            delete playerNames[playerNum];
+            connToPlayer.delete(conn.peer);
+          }
+        }
+        connections = connections.filter(c => c !== conn);
+        if (gameStarted) {
+          updateConnStatus('host');
+        } else {
+          updateLobbyUI();
+          broadcastLobbyUpdate();
+        }
+      });
+    });
+    peer.on('error', err => {
+      console.warn('PeerJS host error:', err);
+      if (err.type === 'unavailable-id') {
+        alert('A room with this code already exists. Try again.');
+        document.getElementById('create-btn').disabled = false;
+      }
+      peerConnected = false;
+    });
+    return true;
+  } catch (e) {
+    console.warn('PeerJS setup failed:', e);
+    alert('Failed to create room.');
+    return false;
+  }
+}
 
+function setupClientPeer() {
+  if (typeof Peer === 'undefined') {
+    alert('PeerJS not loaded. Check your connection.');
+    return false;
+  }
+  const hostPeerId = 'distrodice-' + game.seed.toLowerCase();
+  isHost = false;
+  try {
+    peer = new Peer();
+    peer.on('open', () => {
+      const conn = peer.connect(hostPeerId, { reliable: true });
+      conn.on('open', () => {
+        connections = [conn];
+        peerConnected = true;
+        conn.send({ type: 'hello', name: game.playerName });
+        document.getElementById('join-lobby-status').textContent = 'Connected! Waiting for host to start...';
+      });
+      conn.on('data', data => handlePeerMessage(data));
+      conn.on('close', () => {
+        connections = [];
+        peerConnected = false;
+        if (!gameStarted) {
+          document.getElementById('join-lobby-status').textContent = 'Disconnected from host.';
+        } else {
+          updateConnStatus('disconnected');
+        }
+      });
+    });
+    peer.on('error', err => {
+      console.warn('PeerJS client error:', err);
+      if (err.type === 'peer-unavailable') {
+        document.getElementById('join-lobby-status').textContent = 'Room not found. Check the code and try again.';
+      } else {
+        document.getElementById('join-lobby-status').textContent = 'Connection error: ' + err.type;
+      }
+    });
+    return true;
+  } catch (e) {
+    console.warn('PeerJS setup failed:', e);
+    alert('Failed to join room.');
+    return false;
+  }
+}
+
+function reconnectPeer() {
+  if (typeof Peer === 'undefined') { updateConnStatus('offline'); return; }
+  gameStarted = true;
+  const peerId = 'distrodice-' + game.seed.toLowerCase();
   try {
     if (game.myPlayer === 1) {
-      // Host
       isHost = true;
-      playerNames[1] = game.playerName;
-      playerPenalties[1] = game.penalties;
       peer = new Peer(peerId);
-
-      peer.on('open', () => {
-        peerConnected = true;
-        updateConnStatus('host');
-      });
-
+      peer.on('open', () => { peerConnected = true; updateConnStatus('host'); });
       peer.on('connection', conn => {
         conn.on('open', () => {
           connections.push(conn);
           updateConnStatus('host');
-          // Send current turn state + all known names to new connection
           conn.send({ type: 'state', turnNumber: game.turnNumber, names: playerNames });
         });
         conn.on('data', data => handlePeerMessage(data, conn));
-        conn.on('close', () => {
-          connections = connections.filter(c => c !== conn);
-          updateConnStatus('host');
-        });
+        conn.on('close', () => { connections = connections.filter(c => c !== conn); updateConnStatus('host'); });
       });
-
-      peer.on('error', err => {
-        console.warn('PeerJS host error:', err);
-        peerConnected = false;
-        updateConnStatus('offline');
-      });
+      peer.on('error', () => { peerConnected = false; updateConnStatus('offline'); });
     } else {
-      // Client
       peer = new Peer();
-
       peer.on('open', () => {
         const conn = peer.connect(peerId, { reliable: true });
         conn.on('open', () => {
-          connections = [conn];
-          peerConnected = true;
-          updateConnStatus('connected');
-          // Send our name to host
+          connections = [conn]; peerConnected = true; updateConnStatus('connected');
           sendToHost({ type: 'hello', player: game.myPlayer, name: game.playerName });
         });
         conn.on('data', data => handlePeerMessage(data));
-        conn.on('close', () => {
-          connections = [];
-          peerConnected = false;
-          updateConnStatus('disconnected');
-        });
+        conn.on('close', () => { connections = []; peerConnected = false; updateConnStatus('disconnected'); });
       });
-
-      peer.on('error', err => {
-        console.warn('PeerJS client error:', err);
-        peerConnected = false;
-        updateConnStatus('offline');
-      });
+      peer.on('error', () => { peerConnected = false; updateConnStatus('offline'); });
     }
   } catch (e) {
-    console.warn('PeerJS setup failed:', e);
+    console.warn('PeerJS reconnect failed:', e);
     updateConnStatus('offline');
   }
 }
@@ -1061,11 +1145,34 @@ function sendToHost(data) {
 function handlePeerMessage(data, fromConn) {
   switch (data.type) {
     case 'hello':
-      // Client introducing themselves (host only)
       if (isHost) {
-        playerNames[data.player] = data.name || `Player ${data.player}`;
-        // Broadcast updated names to all
-        broadcast({ type: 'names', names: playerNames });
+        if (!gameStarted) {
+          // Lobby: assign player number
+          const playerNum = getNextPlayerSlot();
+          if (!playerNum) {
+            fromConn.send({ type: 'error', message: 'Room is full' });
+            return;
+          }
+          playerNames[playerNum] = data.name || `Player ${playerNum}`;
+          connToPlayer.set(fromConn.peer, playerNum);
+          connections.push(fromConn);
+          fromConn.send({
+            type: 'welcome',
+            player: playerNum,
+            playerCount: game.playerCount,
+            seed: game.seed,
+            names: playerNames,
+          });
+          updateLobbyUI();
+          broadcastLobbyUpdate();
+        } else if (data.player) {
+          // Game in progress: reconnection
+          playerNames[data.player] = data.name || `Player ${data.player}`;
+          if (!connections.includes(fromConn)) connections.push(fromConn);
+          fromConn.send({ type: 'state', turnNumber: game.turnNumber, names: playerNames });
+          broadcast({ type: 'names', names: playerNames });
+          updateConnStatus('host');
+        }
       }
       break;
 
@@ -1224,6 +1331,37 @@ function handlePeerMessage(data, fromConn) {
     case 'leaderboard':
       // Final leaderboard from host
       showLeaderboard(data.scores, data.reason);
+      break;
+
+    case 'welcome':
+      game.myPlayer = data.player;
+      game.playerCount = data.playerCount;
+      game.seed = data.seed;
+      Object.assign(playerNames, data.names);
+      playerNames[game.myPlayer] = game.playerName;
+      document.getElementById('join-lobby-status').textContent = `You are Player ${data.player}. Waiting for host to start...`;
+      updateJoinLobbyUI();
+      break;
+
+    case 'lobbyUpdate':
+      Object.assign(playerNames, data.names);
+      if (!gameStarted) updateJoinLobbyUI();
+      break;
+
+    case 'gameStart':
+      game.seed = data.seed;
+      game.playerCount = data.playerCount;
+      game.startingPlayer = data.startingPlayer;
+      game.turnNumber = 0;
+      Object.assign(playerNames, data.names);
+      startGameScreen();
+      break;
+
+    case 'error':
+      if (!gameStarted) {
+        const statusEl = document.getElementById('join-lobby-status');
+        if (statusEl) statusEl.textContent = data.message || 'Error from host';
+      }
       break;
   }
 }
@@ -2109,6 +2247,66 @@ function showNotification(text) {
   setTimeout(() => el.remove(), 3000);
 }
 
+// ===== LOBBY UI =====
+function updateLobbyUI() {
+  const el = document.getElementById('lobby-players');
+  if (!el) return;
+  let html = '';
+  for (let i = 1; i <= game.playerCount; i++) {
+    const name = playerNames[i];
+    if (name) {
+      html += `<div class="lobby-player connected">\u2713 Player ${i}: ${name}${i === 1 ? ' (host)' : ''}</div>`;
+    } else {
+      html += `<div class="lobby-player waiting">\u25CB Player ${i}: waiting...</div>`;
+    }
+  }
+  el.innerHTML = html;
+  const startBtn = document.getElementById('start-btn');
+  if (!startBtn) return;
+  const connectedCount = Object.keys(playerNames).length;
+  if (connectedCount >= game.playerCount) {
+    startBtn.disabled = false;
+    startBtn.textContent = 'Start Game';
+  } else {
+    startBtn.disabled = true;
+    startBtn.textContent = `Waiting for players... (${connectedCount}/${game.playerCount})`;
+  }
+}
+
+function updateJoinLobbyUI() {
+  const el = document.getElementById('join-lobby-players');
+  if (!el) return;
+  let html = '';
+  const sorted = Object.entries(playerNames).sort((a, b) => parseInt(a[0]) - parseInt(b[0]));
+  for (const [num, name] of sorted) {
+    const isMe = parseInt(num) === game.myPlayer;
+    html += `<div class="lobby-player connected">${name}${isMe ? ' (you)' : parseInt(num) === 1 ? ' (host)' : ''}</div>`;
+  }
+  el.innerHTML = html;
+}
+
+function broadcastLobbyUpdate() {
+  broadcast({ type: 'lobbyUpdate', names: playerNames });
+}
+
+function startGameScreen() {
+  gameStarted = true;
+  if (isHost) playerPenalties[game.myPlayer] = 0;
+  document.getElementById('setup-screen').style.display = 'none';
+  document.getElementById('game-screen').style.display = 'flex';
+  game.phase = 'roll';
+  renderLegend();
+  renderAll();
+  updateConnStatus(isHost ? 'host' : 'connected');
+  const cp = getCurrentPlayer();
+  if (cp === game.myPlayer) {
+    triggerTurnFlash();
+    triggerHaptic();
+  } else {
+    autoRollIfNeeded();
+  }
+}
+
 // ===== SETUP =====
 document.getElementById('create-btn').addEventListener('click', () => {
   const count = parseInt(document.getElementById('player-count').value);
@@ -2122,54 +2320,48 @@ document.getElementById('create-btn').addEventListener('click', () => {
   game.seed = generateSeed();
   playerNames[1] = name;
 
+  if (!setupHostPeer()) return;
+
   document.getElementById('seed-display').textContent = game.seed;
-  document.getElementById('seed-result').style.display = 'block';
+  document.getElementById('host-lobby').style.display = 'block';
   document.getElementById('create-btn').disabled = true;
   document.getElementById('join-group').style.display = 'none';
-  document.getElementById('start-btn').disabled = false;
+  document.getElementById('setup-divider').style.display = 'none';
+  updateLobbyUI();
 });
 
 document.getElementById('join-btn').addEventListener('click', () => {
   const seed = document.getElementById('join-seed').value.trim().toUpperCase();
-  const count = parseInt(document.getElementById('join-count').value);
-  const player = parseInt(document.getElementById('join-player').value);
-  const name = document.getElementById('join-name').value.trim() || `Player ${player}`;
+  const name = document.getElementById('join-name').value.trim() || 'Player';
 
-  if (seed.length !== 6) { alert('Seed must be 6 characters'); return; }
-  if (count < 2 || count > 8) { alert('Number of players must be 2-8'); return; }
-  if (player < 1 || player > count) { alert(`Player number must be 1-${count}`); return; }
+  if (seed.length !== 6) { alert('Room code must be 6 characters'); return; }
 
   game.seed = seed;
-  game.playerCount = count;
-  game.myPlayer = player;
   game.playerName = name;
-  playerNames[player] = name;
+
+  if (!setupClientPeer()) return;
 
   document.getElementById('join-btn').disabled = true;
-  document.getElementById('join-btn').textContent = `Joined as ${name} (Player ${player})`;
+  document.getElementById('join-lobby').style.display = 'block';
   document.getElementById('create-group').style.display = 'none';
-  document.getElementById('start-btn').disabled = false;
+  document.getElementById('setup-divider').style.display = 'none';
 });
 
 document.getElementById('start-btn').addEventListener('click', () => {
+  if (!isHost) return;
+
   game.startingPlayer = getStartingPlayer(game.seed, game.playerCount);
   game.turnNumber = 0;
-  game.phase = 'roll';
 
-  document.getElementById('setup-screen').style.display = 'none';
-  document.getElementById('game-screen').style.display = 'flex';
+  broadcast({
+    type: 'gameStart',
+    seed: game.seed,
+    playerCount: game.playerCount,
+    startingPlayer: game.startingPlayer,
+    names: playerNames,
+  });
 
-  renderLegend();
-  renderAll();
-  setupPeer();
-
-  const cp = getCurrentPlayer();
-  if (cp === game.myPlayer) {
-    triggerTurnFlash();
-    triggerHaptic();
-  } else {
-    autoRollIfNeeded();
-  }
+  startGameScreen();
 });
 
 // ===== DICE INTERACTION =====
@@ -2219,11 +2411,12 @@ function loadState() {
             delete saved._playerNames;
           }
           Object.assign(game, saved);
+          gameStarted = true;
           document.getElementById('setup-screen').style.display = 'none';
           document.getElementById('game-screen').style.display = 'flex';
           renderLegend();
           renderAll();
-          setupPeer();
+          reconnectPeer();
           autoRollIfNeeded();
         });
 
