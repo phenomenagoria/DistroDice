@@ -669,8 +669,6 @@ html, body {
 }
 
 .leaderboard tr.winner td {
-  background: linear-gradient(90deg, rgba(241,196,15,0.2), rgba(241,196,15,0.05));
-  color: var(--yellow);
   font-weight: 700;
 }
 
@@ -679,7 +677,14 @@ html, body {
 }
 
 .leaderboard tr.is-me td {
-  border-left: 3px solid var(--blue);
+  background: rgba(46,204,113,0.2);
+  color: var(--green);
+  font-weight: 600;
+}
+
+.leaderboard tr.winner.is-me td {
+  background: rgba(46,204,113,0.25);
+  color: var(--green);
 }
 
 .leaderboard-waiting {
@@ -727,14 +732,14 @@ html, body {
 <!-- SETUP SCREEN -->
 <div id="setup-screen">
   <h1>DistroDice</h1>
-  <p class="subtitle">v2.2.2 — A multiplayer dice game</p>
+  <p class="subtitle">v2.3.0 — A multiplayer dice game</p>
 
   <div class="setup-group" id="create-group">
     <h2>Create Room</h2>
     <label for="create-name">Your Name</label>
     <input type="text" id="create-name" class="name-input" placeholder="Enter your name" maxlength="20" style="text-transform:none;letter-spacing:0;">
     <label for="player-count">Number of Players</label>
-    <input type="number" id="player-count" min="2" max="8" value="2">
+    <input type="number" id="player-count" min="2" max="10" value="2">
     <button class="btn btn-primary" id="create-btn">Create Room</button>
     <div id="host-lobby" style="display:none;">
       <label>Share this code with other players:</label>
@@ -929,6 +934,7 @@ let gameOverShown = false;
 let gameStarted = false;
 let connToPlayer = new Map();
 let pendingGameOver = null;   // reason string when game-over is pending revision
+let pendingRemoteLocks = [];  // locks from other players, applied at turn advance
 let preFinishSnapshot = null; // snapshot saved before finishMarking, for undo-done
 
 // ===== UNDO =====
@@ -968,6 +974,8 @@ let connections = [];
 let isHost = false;
 let peerConnected = false;
 let readyPlayers = new Set();
+let reconnectTimer = null;
+const RECONNECT_INTERVAL = 5000;
 
 function getNextPlayerSlot() {
   for (let i = 2; i <= game.playerCount; i++) {
@@ -1051,15 +1059,26 @@ function setupClientPeer() {
           document.getElementById('join-lobby-status').textContent = 'Disconnected from host.';
         } else {
           updateConnStatus('disconnected');
+          scheduleReconnect();
         }
       });
     });
     peer.on('error', err => {
       console.warn('PeerJS client error:', err);
       if (err.type === 'peer-unavailable') {
-        document.getElementById('join-lobby-status').textContent = 'Room not found. Check the code and try again.';
+        if (gameStarted) {
+          updateConnStatus('disconnected');
+          scheduleReconnect();
+        } else {
+          document.getElementById('join-lobby-status').textContent = 'Room not found. Check the code and try again.';
+        }
       } else {
-        document.getElementById('join-lobby-status').textContent = 'Connection error: ' + err.type;
+        if (gameStarted) {
+          updateConnStatus('disconnected');
+          scheduleReconnect();
+        } else {
+          document.getElementById('join-lobby-status').textContent = 'Connection error: ' + err.type;
+        }
       }
     });
     return true;
@@ -1078,7 +1097,7 @@ function reconnectPeer() {
     if (game.myPlayer === 1) {
       isHost = true;
       peer = new Peer(peerId);
-      peer.on('open', () => { peerConnected = true; updateConnStatus('host'); });
+      peer.on('open', () => { peerConnected = true; stopReconnect(); updateConnStatus('host'); });
       peer.on('connection', conn => {
         conn.on('open', () => {
           connections.push(conn);
@@ -1088,24 +1107,47 @@ function reconnectPeer() {
         conn.on('data', data => handlePeerMessage(data, conn));
         conn.on('close', () => { connections = connections.filter(c => c !== conn); updateConnStatus('host'); });
       });
-      peer.on('error', () => { peerConnected = false; updateConnStatus('offline'); });
+      peer.on('error', () => { peerConnected = false; updateConnStatus('offline'); scheduleReconnect(); });
     } else {
       peer = new Peer();
       peer.on('open', () => {
         const conn = peer.connect(peerId, { reliable: true });
         conn.on('open', () => {
-          connections = [conn]; peerConnected = true; updateConnStatus('connected');
+          connections = [conn]; peerConnected = true; stopReconnect(); updateConnStatus('connected');
           sendToHost({ type: 'hello', player: game.myPlayer, name: game.playerName });
         });
         conn.on('data', data => handlePeerMessage(data));
-        conn.on('close', () => { connections = []; peerConnected = false; updateConnStatus('disconnected'); });
+        conn.on('close', () => { connections = []; peerConnected = false; updateConnStatus('disconnected'); scheduleReconnect(); });
       });
-      peer.on('error', () => { peerConnected = false; updateConnStatus('offline'); });
+      peer.on('error', () => { peerConnected = false; updateConnStatus('offline'); scheduleReconnect(); });
     }
   } catch (e) {
     console.warn('PeerJS reconnect failed:', e);
     updateConnStatus('offline');
+    scheduleReconnect();
   }
+}
+
+function scheduleReconnect() {
+  if (!gameStarted || reconnectTimer) return;
+  reconnectTimer = setInterval(attemptReconnect, RECONNECT_INTERVAL);
+}
+
+function stopReconnect() {
+  if (reconnectTimer) {
+    clearInterval(reconnectTimer);
+    reconnectTimer = null;
+  }
+}
+
+function attemptReconnect() {
+  if (peerConnected) { stopReconnect(); return; }
+  if (!gameStarted) { stopReconnect(); return; }
+  try {
+    if (peer) { peer.destroy(); peer = null; }
+  } catch (e) {}
+  connections = [];
+  reconnectPeer();
 }
 
 function updateConnStatus(status) {
@@ -1120,11 +1162,11 @@ function updateConnStatus(status) {
       el.className = 'conn-status connected';
       break;
     case 'disconnected':
-      el.textContent = 'Disconnected — manual mode';
+      el.textContent = reconnectTimer ? 'Disconnected — reconnecting...' : 'Disconnected — manual mode';
       el.className = 'conn-status disconnected';
       break;
     default:
-      el.textContent = 'Offline — manual mode';
+      el.textContent = reconnectTimer ? 'Offline — reconnecting...' : 'Offline — manual mode';
       el.className = 'conn-status';
       break;
   }
@@ -1200,6 +1242,12 @@ function handlePeerMessage(data, fromConn) {
         // Also update host UI
         updateWaitingText(readyPlayers.size, game.playerCount);
         if (readyPlayers.size >= game.playerCount) {
+          // Apply pending locks and check for game over before advancing
+          applyPendingRemoteLocks();
+          if (game.lockedRowCount >= 2 && !gameOverShown) {
+            triggerNetworkedGameOver('2 rows have been locked!');
+            break;
+          }
           readyPlayers.clear();
           game.turnNumber++;
           resetTurnState();
@@ -1253,8 +1301,6 @@ function handlePeerMessage(data, fromConn) {
 
     case 'lock':
       if (!game.rowLocked[data.color]) {
-        game.rowLocked[data.color] = true;
-        game.lockedRowCount = COLORS.filter(c => game.rowLocked[c]).length;
         const lockerName = data.name || `Player ${data.player || '?'}`;
 
         if (isHost && fromConn) {
@@ -1266,17 +1312,20 @@ function handlePeerMessage(data, fromConn) {
           });
         }
 
-        // Check if 2+ rows locked — game over
-        if (game.lockedRowCount >= 2 && isHost && !gameOverShown) {
+        // Defer the lock — other players can still use the row this turn
+        // Only store if not already pending
+        if (!pendingRemoteLocks.some(l => l.color === data.color)) {
+          pendingRemoteLocks.push({ color: data.color, player: data.player, name: lockerName });
+        }
+
+        // Check if 2+ rows will be locked (current + pending) — game over
+        const effectiveLockCount = COLORS.filter(c => game.rowLocked[c]).length
+          + pendingRemoteLocks.filter(l => !game.rowLocked[l.color]).length;
+        if (effectiveLockCount >= 2 && isHost && !gameOverShown) {
+          applyPendingRemoteLocks();
           triggerNetworkedGameOver('2 rows have been locked!');
-        } else if (game.phase === 'waiting' && data.player !== game.myPlayer) {
-          // If player is waiting, pull them back to revise marks
-          revertToMarking();
-          showNotification(`${data.color.toUpperCase()} row locked by ${lockerName}! Review your marks.`);
-          renderAll();
         } else {
-          showNotification(`${data.color.toUpperCase()} row locked by ${lockerName}!`);
-          renderAll();
+          showNotification(`${data.color.toUpperCase()} row locked by ${lockerName}! Locks after this turn.`);
         }
       } else if (isHost && fromConn) {
         // Already locked but still relay to other clients
@@ -1410,7 +1459,8 @@ function showLeaderboard(scores, reason) {
     let cls = '';
     if (isWinner) cls += ' winner';
     if (isMe) cls += ' is-me';
-    html += `<tr class="${cls.trim()}"><td>${e.name}</td><td>${e.score}</td></tr>`;
+    const youLabel = isMe ? ' (You)' : '';
+    html += `<tr class="${cls.trim()}"><td>${e.name}${youLabel}</td><td>${e.score}</td></tr>`;
   });
   html += '</tbody></table>';
 
@@ -1964,6 +2014,12 @@ function finishMarking() {
       broadcast({ type: 'readyCount', ready: readyPlayers.size, total: game.playerCount });
       updateWaitingText(readyPlayers.size, game.playerCount);
       if (readyPlayers.size >= game.playerCount) {
+        // Apply pending locks and check for game over before advancing
+        applyPendingRemoteLocks();
+        if (game.lockedRowCount >= 2 && !gameOverShown) {
+          triggerNetworkedGameOver('2 rows have been locked!');
+          return;
+        }
         readyPlayers.clear();
         preFinishSnapshot = null; // too late to undo
         game.turnNumber++;
@@ -2055,11 +2111,30 @@ function finalizeGameOver(reason) {
     } else {
       sendToHost({ type: 'score', player: game.myPlayer, name: game.playerName, score: myScore, reason: reason });
     }
-    showLeaderboardWaiting();
+    // Build leaderboard locally from allPlayerCards so it appears instantly
+    const localScores = {};
+    localScores[game.myPlayer] = { name: game.playerName || `Player ${game.myPlayer}`, score: myScore };
+    for (let p = 1; p <= game.playerCount; p++) {
+      if (p === game.myPlayer) continue;
+      const card = allPlayerCards[p];
+      if (card) {
+        let total = 0;
+        for (const color of COLORS) {
+          const mc = (card.marked[color] || []).length + (card.hasLockBonus[color] ? 1 : 0);
+          total += getScore(mc);
+        }
+        total -= (card.penalties || 0) * 5;
+        localScores[p] = { name: playerNames[p] || `Player ${p}`, score: total };
+      } else {
+        // Player hasn't sent marks yet — show with score 0
+        localScores[p] = { name: playerNames[p] || `Player ${p}`, score: 0 };
+      }
+    }
+    showLeaderboard(localScores, reason);
   } else {
     const el = document.getElementById('game-over-leaderboard');
     el.innerHTML = `<table class="leaderboard"><thead><tr><th>Player</th><th style="text-align:right;">Score</th></tr></thead><tbody>
-      <tr class="winner is-me"><td>${game.playerName || 'You'}</td><td>${myScore}</td></tr>
+      <tr class="winner is-me"><td>${game.playerName || 'Player'} (You)</td><td>${myScore}</td></tr>
     </tbody></table>`;
   }
   document.getElementById('game-over-overlay').classList.add('visible');
@@ -2084,7 +2159,18 @@ function manualNextTurn() {
   announceNewTurn();
 }
 
+function applyPendingRemoteLocks() {
+  for (const lock of pendingRemoteLocks) {
+    if (!game.rowLocked[lock.color]) {
+      game.rowLocked[lock.color] = true;
+    }
+  }
+  pendingRemoteLocks = [];
+  game.lockedRowCount = COLORS.filter(c => game.rowLocked[c]).length;
+}
+
 function resetTurnState() {
+  applyPendingRemoteLocks();
   undoStack = [];
   viewingPlayer = 0; // snap back to own scorecard at turn start
   game.phase = 'roll';
@@ -2213,7 +2299,7 @@ function checkGameEnd() {
     if (!peerConnected) {
       const el = document.getElementById('game-over-leaderboard');
       el.innerHTML = `<table class="leaderboard"><thead><tr><th>Player</th><th style="text-align:right;">Score</th></tr></thead><tbody>
-        <tr class="winner is-me"><td>${game.playerName || 'You'}</td><td>${total}</td></tr>
+        <tr class="winner is-me"><td>${game.playerName || 'Player'} (You)</td><td>${total}</td></tr>
       </tbody></table>`;
     }
     document.getElementById('game-over-overlay').classList.add('visible');
@@ -2294,7 +2380,7 @@ function startGameScreen() {
 // ===== SETUP =====
 document.getElementById('create-btn').addEventListener('click', () => {
   const count = parseInt(document.getElementById('player-count').value);
-  if (count < 2 || count > 8) return;
+  if (count < 2 || count > 10) return;
 
   const name = document.getElementById('create-name').value.trim() || 'Player 1';
 
